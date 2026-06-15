@@ -86,6 +86,28 @@ public sealed class SettingsManager
         SettingChanged?.Invoke(this, nameof(AppSettings.Language));
     }
 
+    public void UpdateOpenRouterApiKey(string apiKey)
+    {
+        var normalized = apiKey.Trim();
+        if (string.Equals(Current.OpenRouterApiKey, normalized, StringComparison.Ordinal))
+            return;
+
+        Current.OpenRouterApiKey = normalized;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.OpenRouterApiKey));
+    }
+
+    public void UpdatePreferredAiModel(string model)
+    {
+        var normalized = model.Trim();
+        if (string.Equals(Current.PreferredAiModel, normalized, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Current.PreferredAiModel = normalized;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.PreferredAiModel));
+    }
+
     public string FormatDateTime(DateTime dateTime) =>
         Current.TimeFormat == TimeFormatMode.Hour24
             ? dateTime.ToString("yyyy-MM-dd HH:mm")

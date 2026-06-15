@@ -91,5 +91,19 @@
   "UI_GitBranchCreated": "Branch '{0}' created and switched.",
   "UI_GitBranchSwitched": "Switched to branch '{0}'.",
   "UI_GitBranchSwitchError": "Failed to switch branch: {0}",
-  "UI_GitBranchCreateError": "Failed to create branch: {0}"
+  "UI_GitBranchCreateError": "Failed to create branch: {0}",
+  "UI_AiExecuteQuery": "AI: Execute Query...",
+  "UI_AiPromptTitle": "AI File Automation",
+  "UI_AiPromptHint": "Describe what you want to do with the files in this folder.",
+  "UI_AiPromptPlaceholder": "e.g. Organize files by extension into folders",
+  "UI_AiSubmit": "Generate Plan",
+  "UI_AiPreviewTitle": "AI Action Preview",
+  "UI_AiPreviewHint": "Review the operations below before applying them.",
+  "UI_AiConfirm": "Confirm",
+  "UI_AiNoOperations": "The AI returned no operations for this request.",
+  "UI_AiThinking": "Asking AI...",
+  "UI_AiExecuting": "Executing operations...",
+  "UI_AiOpenRouterApiKey": "OpenRouter API Key",
+  "UI_AiPreferredModel": "Preferred AI Model",
+  "UI_AiApiKeyHint": "Get a key at openrouter.ai"
 }

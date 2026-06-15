@@ -32,6 +32,8 @@ public partial class MainWindow : Window
     private readonly RecycleBinService _recycleBinService = new();
     private readonly ArchiveService _archiveService = new();
     private readonly FileMoveService _fileMoveService = new();
+    private readonly AiService _aiService = new();
+    private readonly AiCommandExecutor _aiCommandExecutor = new();
     private readonly ObservableCollection<DirectoryTreeNode> _driveNodes = [];
     private readonly List<DirectoryPaneState> _panes = [];
 
@@ -62,6 +64,10 @@ public partial class MainWindow : Window
     private bool _isExtracting;
     private bool _paneRemoveInProgress;
     private bool _suppressSettingsUiChange;
+    private bool _suppressAiApiKeyChange;
+    private bool _isAiInProgress;
+    private DirectoryPaneState? _aiTargetPane;
+    private List<AiCommand> _aiPendingCommands = [];
 
     public MainWindow()
     {
@@ -70,6 +76,24 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         StateChanged += MainWindow_StateChanged;
         ContentRendered += MainWindow_ContentRendered;
+        PreviewKeyDown += MainWindow_PreviewKeyDown;
+    }
+
+    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F5)
+        {
+            RefreshActivePane();
+            e.Handled = true;
+        }
+    }
+
+    private void RefreshActivePane()
+    {
+        if (_activePane != null)
+        {
+            RefreshDirectoryListing(_activePane);
+        }
     }
 
     private void MainWindow_ContentRendered(object? sender, EventArgs e)
@@ -153,6 +177,7 @@ public partial class MainWindow : Window
         control.GitAmendRequested += (_, _) => HandleGitAmendRequest(pane);
         control.GitHistoryRequested += (_, _) => HandleGitHistoryRequest(pane);
         control.GitBranchRequested += (_, e) => HandleGitBranchRequest(pane, e.TargetDirectory);
+        control.AiExecuteQueryRequested += (_, _) => HandleAiExecuteQueryRequest(pane);
 
         _panes.Add(pane);
         UpdatePaneCloseButtonsVisibility();
@@ -212,6 +237,9 @@ public partial class MainWindow : Window
 
         if (_commitHistoryTargetPane == pane)
             HideCommitHistoryOverlay(animate: false);
+
+        if (_aiTargetPane == pane)
+            HideAiWorkflow(animate: false);
 
         RebuildPaneHost();
         UpdatePaneCloseButtonsVisibility();
@@ -666,19 +694,37 @@ public partial class MainWindow : Window
         if (!status.Success || status.Changes.Count == 0) return;
 
         var repoRootNormalized = Path.GetFullPath(repoRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        
+        // Optimization: Pre-process changes for faster lookup
+        var fileChanges = new Dictionary<string, GitFileStatusType>(StringComparer.OrdinalIgnoreCase);
+        var modifiedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var change in status.Changes)
+        {
+            fileChanges[change.FilePath] = change.Status;
+            
+            // Mark all parent directories as modified
+            var parts = change.FilePath.Split('/');
+            var currentPath = "";
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                currentPath = i == 0 ? parts[i] : $"{currentPath}/{parts[i]}";
+                modifiedDirectories.Add(currentPath);
+            }
+        }
 
         foreach (var entry in entries)
         {
             var relativePath = Path.GetRelativePath(repoRootNormalized, entry.FullPath).Replace('\\', '/');
             
-            // Check if the file itself is modified or if it's a directory containing modifications
-            var match = status.Changes.FirstOrDefault(c => 
-                string.Equals(c.FilePath, relativePath, StringComparison.OrdinalIgnoreCase) ||
-                (entry.IsDirectory && c.FilePath.StartsWith(relativePath + "/", StringComparison.OrdinalIgnoreCase)));
-
-            if (match is not null)
+            if (entry.IsDirectory)
             {
-                entry.GitStatus = entry.IsDirectory ? GitFileStatusType.Modified : match.Status;
+                if (modifiedDirectories.Contains(relativePath))
+                    entry.GitStatus = GitFileStatusType.Modified;
+            }
+            else if (fileChanges.TryGetValue(relativePath, out var fileStatus))
+            {
+                entry.GitStatus = fileStatus;
             }
         }
 
@@ -1016,6 +1062,7 @@ public partial class MainWindow : Window
         pane.Control.GitCommitMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
         pane.Control.GitAmendMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
         pane.Control.GitHistoryMenuItemControl.IsEnabled = isGitRepo && !_isGitHistoryInProgress;
+        pane.Control.AiExecuteQueryMenuItemControl.IsEnabled = hasResolvedPath && !_isAiInProgress;
 
         foreach (var item in menu.Items)
         {
@@ -1023,7 +1070,7 @@ public partial class MainWindow : Window
                 continue;
 
             var tag = (string?)menuItem.Tag;
-            if (tag is "GitInit" or "GitCommit" or "GitAmend" or "GitHistory")
+            if (tag is "GitInit" or "GitCommit" or "GitAmend" or "GitHistory" or "AiExecuteQuery")
                 continue;
 
             menuItem.IsEnabled = tag switch
@@ -1237,6 +1284,268 @@ public partial class MainWindow : Window
             return;
 
         _ = ShowCommitHistoryAsync(pane, repositoryRoot);
+    }
+
+    private void HandleAiExecuteQueryRequest(DirectoryPaneState pane)
+    {
+        SetActivePane(pane);
+
+        if (string.IsNullOrWhiteSpace(pane.CurrentPath) || !Directory.Exists(pane.CurrentPath))
+        {
+            StatusText.Text = LocalizationManager.Instance["UI_GitNoDirectory"];
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SettingsManager.Instance.Current.OpenRouterApiKey))
+        {
+            StatusText.Text = LocalizationManager.Instance["UI_AiOpenRouterApiKey"];
+            ShowSettingsOverlay();
+            return;
+        }
+
+        ShowAiPromptOverlay(pane);
+    }
+
+    private void ShowAiPromptOverlay(DirectoryPaneState pane)
+    {
+        _aiTargetPane = pane;
+        _aiPendingCommands = [];
+
+        AiPromptTextBox.Text = string.Empty;
+        HideAiPromptError();
+        PushChromeDimOverlay();
+        AiPromptOverlay.Visibility = Visibility.Visible;
+        UiAnimationHelper.ShowOverlay(AiPromptPanel);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            AiPromptTextBox.Focus();
+            Keyboard.Focus(AiPromptTextBox);
+        }, DispatcherPriority.Input);
+    }
+
+    private void HideAiPromptOverlay()
+    {
+        if (AiPromptOverlay.Visibility != Visibility.Visible)
+            return;
+
+        AiPromptOverlay.Visibility = Visibility.Collapsed;
+        AiPromptTextBox.Clear();
+        HideAiPromptError();
+        PopChromeDimOverlay();
+    }
+
+    private void HideAiWorkflow(bool animate = true)
+    {
+        HideAiPreviewOverlay(animate);
+        HideAiPromptOverlay();
+        _aiTargetPane = null;
+        _aiPendingCommands = [];
+    }
+
+    private void ShowAiPromptError(string message)
+    {
+        AiPromptErrorText.Text = message;
+        AiPromptErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void HideAiPromptError()
+    {
+        AiPromptErrorText.Text = string.Empty;
+        AiPromptErrorText.Visibility = Visibility.Collapsed;
+    }
+
+    private void AiPromptCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideAiWorkflow();
+        _aiTargetPane = null;
+    }
+
+    private void AiPromptSubmitButton_Click(object sender, RoutedEventArgs e) =>
+        _ = SubmitAiPromptAsync();
+
+    private void AiPromptTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            _ = SubmitAiPromptAsync();
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            HideAiWorkflow();
+            _aiTargetPane = null;
+        }
+    }
+
+    private async Task SubmitAiPromptAsync()
+    {
+        if (_aiTargetPane is null || string.IsNullOrWhiteSpace(_aiTargetPane.CurrentPath))
+        {
+            ShowAiPromptError(LocalizationManager.Instance["UI_GitNoDirectory"]);
+            return;
+        }
+
+        var query = AiPromptTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            ShowAiPromptError(LocalizationManager.Instance["UI_AiPromptHint"]);
+            return;
+        }
+
+        var pane = _aiTargetPane;
+        var directory = pane.CurrentPath;
+        var entries = pane.Control.FileListView.ItemsSource as IReadOnlyList<FileSystemEntry>
+            ?? pane.Control.FileListView.Items.Cast<FileSystemEntry>().ToList();
+
+        _isAiInProgress = true;
+        AiPromptSubmitButton.IsEnabled = false;
+        AiPromptCancelButton.IsEnabled = false;
+        HideAiPromptError();
+        StatusText.Text = LocalizationManager.Instance["UI_AiThinking"];
+
+        try
+        {
+            var result = await _aiService.GenerateCommandsAsync(directory, entries, query);
+
+            if (!result.Success)
+            {
+                ShowAiPromptError(result.ErrorMessage);
+                StatusText.Text = result.ErrorMessage;
+                return;
+            }
+
+            if (result.Commands.Count == 0)
+            {
+                ShowAiPromptError(LocalizationManager.Instance["UI_AiNoOperations"]);
+                StatusText.Text = LocalizationManager.Instance["UI_AiNoOperations"];
+                return;
+            }
+
+            _aiPendingCommands = result.Commands.ToList();
+            HideAiPromptOverlay();
+            ShowAiPreviewOverlay(result.Commands);
+            StatusText.Text = LocalizationManager.Instance["UI_Ready"];
+        }
+        catch (Exception ex)
+        {
+            ShowAiPromptError(ex.Message);
+            StatusText.Text = ex.Message;
+        }
+        finally
+        {
+            _isAiInProgress = false;
+            AiPromptSubmitButton.IsEnabled = true;
+            AiPromptCancelButton.IsEnabled = true;
+        }
+    }
+
+    private void ShowAiPreviewOverlay(IReadOnlyList<AiCommand> commands)
+    {
+        AiPreviewListBox.ItemsSource = commands.Select(command => command.GetDisplayDescription()).ToList();
+        HideAiPreviewError();
+        PushChromeDimOverlay();
+        AiPreviewOverlay.Visibility = Visibility.Visible;
+        UiAnimationHelper.ShowOverlay(AiPreviewPanel);
+        AiPreviewConfirmButton.IsEnabled = commands.Count > 0;
+    }
+
+    private void HideAiPreviewOverlay(bool animate = true)
+    {
+        if (AiPreviewOverlay.Visibility != Visibility.Visible)
+            return;
+
+        void CompleteHide()
+        {
+            AiPreviewOverlay.Visibility = Visibility.Collapsed;
+            AiPreviewListBox.ItemsSource = null;
+            HideAiPreviewError();
+            PopChromeDimOverlay();
+        }
+
+        if (!animate)
+        {
+            CompleteHide();
+            return;
+        }
+
+        UiAnimationHelper.HideOverlay(AiPreviewPanel, CompleteHide);
+    }
+
+    private void ShowAiPreviewError(string message)
+    {
+        AiPreviewErrorText.Text = message;
+        AiPreviewErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void HideAiPreviewError()
+    {
+        AiPreviewErrorText.Text = string.Empty;
+        AiPreviewErrorText.Visibility = Visibility.Collapsed;
+    }
+
+    private void AiPreviewCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideAiPreviewOverlay();
+        _aiPendingCommands = [];
+        _aiTargetPane = null;
+    }
+
+    private void AiPreviewConfirmButton_Click(object sender, RoutedEventArgs e) =>
+        _ = ExecuteAiCommandsAsync();
+
+    private async Task ExecuteAiCommandsAsync()
+    {
+        if (_aiTargetPane is null || string.IsNullOrWhiteSpace(_aiTargetPane.CurrentPath) || _aiPendingCommands.Count == 0)
+            return;
+
+        var pane = _aiTargetPane;
+        var directory = pane.CurrentPath;
+        var commands = _aiPendingCommands.ToList();
+        var loc = LocalizationManager.Instance;
+
+        _isAiInProgress = true;
+        AiPreviewConfirmButton.IsEnabled = false;
+        AiPreviewCancelButton.IsEnabled = false;
+        HideAiPreviewError();
+        StatusText.Text = loc["UI_AiExecuting"];
+
+        try
+        {
+            var result = await Task.Run(() => _aiCommandExecutor.ExecuteAll(directory, commands));
+
+            HideAiPreviewOverlay();
+            _aiPendingCommands = [];
+            _aiTargetPane = null;
+
+            StatusText.Text = result.Message;
+
+            if (!result.Success)
+            {
+                MessageBox.Show(
+                    result.Message,
+                    loc["UI_AiPreviewTitle"],
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            RefreshAfterFileMove(pane);
+        }
+        catch (Exception ex)
+        {
+            ShowAiPreviewError(ex.Message);
+            StatusText.Text = ex.Message;
+        }
+        finally
+        {
+            _isAiInProgress = false;
+            AiPreviewConfirmButton.IsEnabled = true;
+            AiPreviewCancelButton.IsEnabled = true;
+        }
     }
 
     private static List<FileSystemEntry> GetSelectedFileEntries(ListView listView) =>
@@ -2619,6 +2928,7 @@ public partial class MainWindow : Window
     private void PopulateSettingsControls()
     {
         _suppressSettingsUiChange = true;
+        _suppressAiApiKeyChange = true;
         try
         {
             var loc = LocalizationManager.Instance;
@@ -2637,10 +2947,14 @@ public partial class MainWindow : Window
                 locale.Code.Equals(
                     SettingsManager.Instance.Current.Language,
                     StringComparison.OrdinalIgnoreCase)) ?? locales.FirstOrDefault();
+
+            SettingsAiApiKeyBox.Password = SettingsManager.Instance.Current.OpenRouterApiKey;
+            SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
         }
         finally
         {
             _suppressSettingsUiChange = false;
+            _suppressAiApiKeyChange = false;
         }
     }
 
@@ -2704,5 +3018,26 @@ public partial class MainWindow : Window
             return;
 
         SettingsManager.Instance.UpdateLanguage(locale.Code);
+    }
+
+    private void SettingsAiApiKeyBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressAiApiKeyChange)
+            return;
+
+        SettingsManager.Instance.UpdateOpenRouterApiKey(SettingsAiApiKeyBox.Password);
+    }
+
+    private void SettingsAiModelTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        var model = SettingsAiModelTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(model))
+            model = "openai/gpt-4o-mini";
+
+        SettingsManager.Instance.UpdatePreferredAiModel(model);
+        SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
     }
 }

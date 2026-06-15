@@ -91,5 +91,19 @@
   "UI_GitBranchCreated": "Ветка «{0}» создана, выполнен переход.",
   "UI_GitBranchSwitched": "Переключено на ветку «{0}».",
   "UI_GitBranchSwitchError": "Не удалось переключить ветку: {0}",
-  "UI_GitBranchCreateError": "Не удалось создать ветку: {0}"
+  "UI_GitBranchCreateError": "Не удалось создать ветку: {0}",
+  "UI_AiExecuteQuery": "ИИ: Выполнить запрос...",
+  "UI_AiPromptTitle": "ИИ-автоматизация файлов",
+  "UI_AiPromptHint": "Опишите, что нужно сделать с файлами в этой папке.",
+  "UI_AiPromptPlaceholder": "напр. Разложить файлы по расширениям в папки",
+  "UI_AiSubmit": "Сформировать план",
+  "UI_AiPreviewTitle": "Предпросмотр действий ИИ",
+  "UI_AiPreviewHint": "Проверьте операции перед применением.",
+  "UI_AiConfirm": "Подтвердить",
+  "UI_AiNoOperations": "ИИ не предложил операций для этого запроса.",
+  "UI_AiThinking": "Запрос к ИИ...",
+  "UI_AiExecuting": "Выполнение операций...",
+  "UI_AiOpenRouterApiKey": "Ключ API OpenRouter",
+  "UI_AiPreferredModel": "Модель ИИ",
+  "UI_AiApiKeyHint": "Получите ключ на openrouter.ai"
 }
