@@ -1,20 +1,37 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Windows.Media;
 using FileExplorer.Models;
 
 namespace FileExplorer.Services;
 
 public sealed class FileSystemService
 {
-    private const int SearchBatchItemThreshold = 100;
-    private const int SearchBatchMsThreshold = 50;
+    private const int MaxSearchResults = 2_500;
+    private const int MaxSearchDepth = 32;
+    private const int SearchStatusIntervalMs = 250;
+
+    private static readonly HashSet<string> SkippedSearchDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git",
+        ".vs",
+        ".idea",
+        "node_modules",
+        "__pycache__",
+        "bin",
+        "obj",
+        "packages",
+        "vendor",
+        "$Recycle.Bin",
+        "System Volume Information",
+        "WindowsApps"
+    };
 
     private static readonly EnumerationOptions SearchEnumerationOptions = new()
     {
         IgnoreInaccessible = true,
         RecurseSubdirectories = false,
-        AttributesToSkip = FileAttributes.ReparsePoint
+        AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System
     };
 
     private static readonly EnumerationOptions BrowseEnumerationOptions = new()
@@ -90,107 +107,168 @@ public sealed class FileSystemService
         CancellationToken cancellationToken)
     {
         var trimmedQuery = query.Trim();
-        var results = new ConcurrentBag<FileSystemEntry>();
-        var pendingDirectories = new ConcurrentQueue<string>();
-        pendingDirectories.Enqueue(rootPath);
+        if (trimmedQuery.Length == 0)
+            return [];
 
-        var batchBuffer = new List<FileSystemEntry>();
-        var batchLock = new object();
+        return await Task.Run(
+            () => SearchCore(rootPath, trimmedQuery, progress, cancellationToken),
+            cancellationToken);
+    }
+
+    private List<FileSystemEntry> SearchCore(
+        string rootPath,
+        string query,
+        IProgress<SearchProgressReport>? progress,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<FileSystemEntry>(Math.Min(MaxSearchResults, 256));
+        var pendingDirectories = new Queue<(string Path, int Depth)>();
+        pendingDirectories.Enqueue((rootPath, 0));
+
+        var sharedFolderIcon = _iconService.GetSharedFolderIcon();
         var stopwatch = Stopwatch.StartNew();
-        var lastFlushMs = 0L;
+        var lastStatusReportMs = 0L;
+        var scannedDirectories = 0;
+        var isTruncated = false;
 
-        void FlushBatch(bool forceComplete = false)
+        void ReportStatus(bool complete)
         {
-            List<FileSystemEntry> snapshot;
-            int total;
-
-            lock (batchLock)
-            {
-                if (!forceComplete && batchBuffer.Count == 0)
-                    return;
-
-                snapshot = batchBuffer.ToList();
-                batchBuffer.Clear();
-                total = results.Count;
-                lastFlushMs = stopwatch.ElapsedMilliseconds;
-            }
-
-            if (snapshot.Count == 0 && !forceComplete)
-                return;
-
             progress?.Report(new SearchProgressReport
             {
-                NewItems = snapshot,
-                TotalCount = total,
-                IsComplete = forceComplete
+                TotalCount = results.Count,
+                ScannedDirectoryCount = scannedDirectories,
+                IsComplete = complete,
+                IsTruncated = isTruncated
             });
+            lastStatusReportMs = stopwatch.ElapsedMilliseconds;
         }
 
-        void AddMatch(FileSystemEntry entry)
+        while (pendingDirectories.Count > 0)
         {
-            results.Add(entry);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var shouldFlush = false;
-            lock (batchLock)
+            if (results.Count >= MaxSearchResults)
             {
-                batchBuffer.Add(entry);
-                shouldFlush =
-                    batchBuffer.Count >= SearchBatchItemThreshold ||
-                    stopwatch.ElapsedMilliseconds - lastFlushMs >= SearchBatchMsThreshold;
+                isTruncated = true;
+                break;
             }
 
-            if (shouldFlush)
-                FlushBatch();
-        }
+            var (directory, depth) = pendingDirectories.Dequeue();
+            scannedDirectories++;
 
-        await Task.Run(() =>
-        {
-            var parallelOptions = new ParallelOptions
+            try
             {
-                CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            };
-
-            while (!pendingDirectories.IsEmpty)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var currentBatch = new List<string>();
-                while (currentBatch.Count < Math.Max(Environment.ProcessorCount * 4, 16) &&
-                       pendingDirectories.TryDequeue(out var directory))
+                var directoryName = Path.GetFileName(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                if (directoryName.Length > 0 &&
+                    directoryName.Contains(query, StringComparison.OrdinalIgnoreCase))
                 {
-                    currentBatch.Add(directory);
+                    results.Add(CreateSearchDirectoryEntry(directory, directoryName, sharedFolderIcon));
+                    if (results.Count >= MaxSearchResults)
+                    {
+                        isTruncated = true;
+                        break;
+                    }
                 }
 
-                if (currentBatch.Count == 0)
-                    break;
-
-                Parallel.ForEach(currentBatch, parallelOptions, directory =>
+                foreach (var filePath in Directory.EnumerateFiles(directory, "*", SearchEnumerationOptions))
                 {
-                    parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                    var directoryName = Path.GetFileName(directory);
-                    if (directoryName.Contains(trimmedQuery, StringComparison.OrdinalIgnoreCase))
-                        AddMatch(CreateDirectoryEntry(new DirectoryInfo(directory)));
-
-                    foreach (var file in Directory.EnumerateFiles(directory, "*", SearchEnumerationOptions))
+                    var fileName = Path.GetFileName(filePath);
+                    if (fileName.Length == 0 ||
+                        !fileName.Contains(query, StringComparison.OrdinalIgnoreCase))
                     {
-                        parallelOptions.CancellationToken.ThrowIfCancellationRequested();
-
-                        var fileName = Path.GetFileName(file);
-                        if (fileName.Contains(trimmedQuery, StringComparison.OrdinalIgnoreCase))
-                            AddMatch(CreateFileEntry(new FileInfo(file)));
+                        continue;
                     }
 
-                    foreach (var subdirectory in Directory.EnumerateDirectories(directory, "*", SearchEnumerationOptions))
-                        pendingDirectories.Enqueue(subdirectory);
-                });
+                    results.Add(CreateSearchFileEntry(filePath, fileName));
+                    if (results.Count >= MaxSearchResults)
+                    {
+                        isTruncated = true;
+                        break;
+                    }
+                }
+
+                if (isTruncated)
+                    break;
+
+                if (depth >= MaxSearchDepth)
+                    continue;
+
+                foreach (var subdirectory in Directory.EnumerateDirectories(directory, "*", SearchEnumerationOptions))
+                {
+                    var subdirectoryName = Path.GetFileName(subdirectory);
+                    if (ShouldSkipSearchDirectory(subdirectoryName))
+                        continue;
+
+                    pendingDirectories.Enqueue((subdirectory, depth + 1));
+                }
             }
-        }, cancellationToken);
+            catch (UnauthorizedAccessException)
+            {
+                // Skip folders we cannot read.
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Folder disappeared during search.
+            }
+            catch (IOException)
+            {
+                // Transient IO issues while scanning.
+            }
 
-        FlushBatch(forceComplete: true);
+            if (stopwatch.ElapsedMilliseconds - lastStatusReportMs >= SearchStatusIntervalMs)
+                ReportStatus(complete: false);
+        }
 
-        return SortEntries(results.ToList());
+        ReportStatus(complete: true);
+        return SortEntries(results);
+    }
+
+    private static bool ShouldSkipSearchDirectory(string directoryName) =>
+        SkippedSearchDirectoryNames.Contains(directoryName);
+
+    private FileSystemEntry CreateSearchDirectoryEntry(string fullPath, string name, ImageSource folderIcon) =>
+        new()
+        {
+            Name = name,
+            FullPath = fullPath,
+            IsDirectory = true,
+            DateModified = default,
+            Type = "File folder",
+            Icon = folderIcon
+        };
+
+    private FileSystemEntry CreateSearchFileEntry(string fullPath, string name)
+    {
+        long size = 0;
+        DateTime modified = default;
+        string extension = string.Empty;
+
+        try
+        {
+            var info = new FileInfo(fullPath);
+            size = info.Length;
+            modified = info.LastWriteTime;
+            extension = info.Extension;
+        }
+        catch
+        {
+            extension = Path.GetExtension(fullPath);
+        }
+
+        return new FileSystemEntry
+        {
+            Name = name,
+            FullPath = fullPath,
+            IsDirectory = false,
+            DateModified = modified,
+            Type = extension.Length > 0
+                ? extension.TrimStart('.').ToUpperInvariant() + " File"
+                : "File",
+            Size = size,
+            Icon = _iconService.GetFileIcon(fullPath)
+        };
     }
 
     public static bool TryResolveDirectoryPath(string input, out string fullPath)

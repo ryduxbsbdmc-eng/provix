@@ -16,7 +16,7 @@ namespace FileExplorer;
 
 public partial class MainWindow : Window
 {
-    private const int SearchDebounceMs = 400;
+    private const int SearchDebounceMs = 600;
 
     private enum NamePromptMode
     {
@@ -68,6 +68,7 @@ public partial class MainWindow : Window
     private bool _isAiInProgress;
     private DirectoryPaneState? _aiTargetPane;
     private List<AiCommand> _aiPendingCommands = [];
+    private bool _isTerminalVisible;
 
     public MainWindow()
     {
@@ -77,13 +78,24 @@ public partial class MainWindow : Window
         StateChanged += MainWindow_StateChanged;
         ContentRendered += MainWindow_ContentRendered;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+        Closing += MainWindow_Closing;
     }
+
+    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e) =>
+        PowerShellTerminal.Stop();
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.F5)
         {
             RefreshActivePane();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Oem3 && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            ToggleTerminalPanel();
             e.Handled = true;
         }
     }
@@ -295,6 +307,9 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrEmpty(pane.CurrentPath))
             SyncTreeToPath(pane.CurrentPath);
+
+        if (_isTerminalVisible && !string.IsNullOrEmpty(pane.CurrentPath))
+            PowerShellTerminal.SyncWorkingDirectory(pane.CurrentPath);
     }
 
     private async void PanePathSearchBox_TextChanged(DirectoryPaneState pane, TextChangedEventArgs e)
@@ -778,18 +793,16 @@ public partial class MainWindow : Window
 
         var progress = new Progress<SearchProgressReport>(report =>
         {
-            if (token.IsCancellationRequested || pane.LiveSearchResults is null)
+            if (token.IsCancellationRequested || pane != _activePane)
                 return;
 
-            foreach (var item in report.NewItems)
-                pane.LiveSearchResults.Add(item);
+            var status = report.IsComplete
+                ? report.IsTruncated
+                    ? $"Found {report.TotalCount}+ matches for \"{query}\" (limit reached)"
+                    : $"Found {report.TotalCount} match(es) for \"{query}\" in {searchRoot}"
+                : $"Searching... {report.TotalCount} match(es), {report.ScannedDirectoryCount} folder(s) scanned";
 
-            if (pane != _activePane)
-                return;
-
-            StatusText.Text = report.IsComplete
-                ? $"Found {report.TotalCount} match(es) for \"{query}\" in {searchRoot}"
-                : $"Searching... {report.TotalCount} match(es) found";
+            StatusText.Text = status;
         });
 
         try
@@ -803,12 +816,16 @@ public partial class MainWindow : Window
             if (token.IsCancellationRequested || pane.LiveSearchResults is null)
                 return;
 
-            pane.LiveSearchResults.Clear();
-            foreach (var item in finalResults)
-                pane.LiveSearchResults.Add(item);
+            pane.LiveSearchResults = new ObservableCollection<FileSystemEntry>(finalResults);
+            pane.Control.FileListView.ItemsSource = pane.LiveSearchResults;
 
             if (pane == _activePane)
-                StatusText.Text = $"Found {finalResults.Count} match(es) for \"{query}\" in {searchRoot}";
+            {
+                var truncated = finalResults.Count >= 2_500;
+                StatusText.Text = truncated
+                    ? $"Found {finalResults.Count}+ matches for \"{query}\" (limit reached)"
+                    : $"Found {finalResults.Count} match(es) for \"{query}\" in {searchRoot}";
+            }
         }
         catch (OperationCanceledException)
         {
@@ -2911,6 +2928,7 @@ public partial class MainWindow : Window
     {
         var loc = LocalizationManager.Instance;
         Title = loc["UI_AppTitle"];
+        TerminalToggleButton.ToolTip = loc["UI_TerminalToggle"];
         SettingsButton.ToolTip = loc["UI_Settings"];
         AddPaneButton.ToolTip = loc["UI_AddPane"];
         BackNavigationButton.ToolTip = loc["UI_Back"];
@@ -2948,7 +2966,7 @@ public partial class MainWindow : Window
                     SettingsManager.Instance.Current.Language,
                     StringComparison.OrdinalIgnoreCase)) ?? locales.FirstOrDefault();
 
-            SettingsAiApiKeyBox.Password = SettingsManager.Instance.Current.OpenRouterApiKey;
+            SettingsAiApiKeyBox.Text = SettingsManager.Instance.Current.OpenRouterApiKey;
             SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
         }
         finally
@@ -2971,7 +2989,6 @@ public partial class MainWindow : Window
     {
         PopulateSettingsControls();
         SettingsOverlay.Visibility = Visibility.Visible;
-        PushChromeDimOverlay();
         UiAnimationHelper.ShowOverlay(SettingsPanel);
     }
 
@@ -2980,15 +2997,52 @@ public partial class MainWindow : Window
         if (SettingsOverlay.Visibility != Visibility.Visible)
             return;
 
-        UiAnimationHelper.HideOverlay(SettingsPanel, () =>
+        void FinishHide()
         {
             SettingsOverlay.Visibility = Visibility.Collapsed;
-            PopChromeDimOverlay();
-        });
+            SettingsPanel.Visibility = Visibility.Visible;
+            SettingsPanel.ClearValue(UIElement.OpacityProperty);
+            SettingsPanel.RenderTransform = Transform.Identity;
+        }
+
+        if (SettingsPanel.Visibility != Visibility.Visible)
+        {
+            FinishHide();
+            return;
+        }
+
+        UiAnimationHelper.HideOverlay(SettingsPanel, FinishHide);
+    }
+
+    private void SettingsOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source &&
+            IsDescendantOf(source, SettingsPanel))
+        {
+            return;
+        }
+
+        HideSettingsOverlay();
+    }
+
+    private static bool IsDescendantOf(DependencyObject? source, DependencyObject ancestor)
+    {
+        while (source is not null)
+        {
+            if (ReferenceEquals(source, ancestor))
+                return true;
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
     }
 
     private void SettingsCloseButton_Click(object sender, RoutedEventArgs e) =>
         HideSettingsOverlay();
+
+    private void SettingsPanel_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
+        e.Handled = true;
 
     private void SettingsThemeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -3020,12 +3074,12 @@ public partial class MainWindow : Window
         SettingsManager.Instance.UpdateLanguage(locale.Code);
     }
 
-    private void SettingsAiApiKeyBox_PasswordChanged(object sender, RoutedEventArgs e)
+    private void SettingsAiApiKeyBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_suppressAiApiKeyChange)
             return;
 
-        SettingsManager.Instance.UpdateOpenRouterApiKey(SettingsAiApiKeyBox.Password);
+        SettingsManager.Instance.UpdateOpenRouterApiKey(SettingsAiApiKeyBox.Text);
     }
 
     private void SettingsAiModelTextBox_LostFocus(object sender, RoutedEventArgs e)
@@ -3039,5 +3093,63 @@ public partial class MainWindow : Window
 
         SettingsManager.Instance.UpdatePreferredAiModel(model);
         SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
+    }
+
+    private void TerminalToggleButton_Click(object sender, RoutedEventArgs e) =>
+        ToggleTerminalPanel();
+
+    private void ToggleTerminalPanel()
+    {
+        _isTerminalVisible = !_isTerminalVisible;
+
+        if (_isTerminalVisible)
+        {
+            TerminalSplitter.Visibility = Visibility.Visible;
+            PowerShellTerminal.Visibility = Visibility.Visible;
+            TerminalSplitterRow.Height = new GridLength(6);
+            TerminalSplitterRow.MinHeight = 6;
+            TerminalPanelRow.Height = new GridLength(220);
+            TerminalPanelRow.MinHeight = 120;
+
+            var path = ActivePane.CurrentPath;
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            {
+                path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            }
+
+            if (!PowerShellTerminal.IsRunning)
+                PowerShellTerminal.StartSession(path);
+            else
+                PowerShellTerminal.SyncWorkingDirectory(path);
+
+            PowerShellTerminal.FocusInput();
+            return;
+        }
+
+        PowerShellTerminal.Stop();
+        TerminalSplitter.Visibility = Visibility.Collapsed;
+        PowerShellTerminal.Visibility = Visibility.Collapsed;
+        TerminalSplitterRow.Height = new GridLength(0);
+        TerminalSplitterRow.MinHeight = 0;
+        TerminalPanelRow.Height = new GridLength(0);
+        TerminalPanelRow.MinHeight = 0;
+
+        MainChromeHost.UpdateLayout();
+    }
+
+    private void PowerShellTerminal_CloseRequested(object? sender, EventArgs e)
+    {
+        if (_isTerminalVisible)
+            ToggleTerminalPanel();
+    }
+
+    private void PowerShellTerminal_WorkingDirectoryChanged(object? sender, string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return;
+
+        var pane = ActivePane;
+        if (string.IsNullOrEmpty(pane.CurrentPath) || !PathsEqual(pane.CurrentPath, directory))
+            NavigateToDirectory(pane, directory, syncTree: true);
     }
 }

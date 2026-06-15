@@ -34,6 +34,7 @@
     <SolidColorBrush x:Key="AppControlPressedBackground" Color="#2AFFFFFF" />
     <SolidColorBrush x:Key="AppPopupBackground" Color="#F0181818" />
     <SolidColorBrush x:Key="AppPopupBorderBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="OpaqueInputBackgroundBrush" Color="#FF1A1A1A" />
 
     <!-- Chrome / overlay accents -->
     <SolidColorBrush x:Key="CloseHoverBrush" Color="#E81123" />
