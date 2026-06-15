@@ -1,0 +1,113 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Durations -->
+    <Duration x:Key="SelectionTransitionDuration">0:0:0.15</Duration>
+    <Duration x:Key="OverlayTransitionDuration">0:0:0.22</Duration>
+    <Duration x:Key="PaneTransitionDuration">0:0:0.25</Duration>
+    <Duration x:Key="DimFadeInDuration">0:0:0.22</Duration>
+    <Duration x:Key="DimFadeOutDuration">0:0:0.18</Duration>
+
+    <!-- Easing -->
+    <QuadraticEase x:Key="EaseOutQuadratic" EasingMode="EaseOut" />
+    <CubicEase x:Key="EaseOutCubic" EasingMode="EaseOut" />
+
+    <!-- Selection animation colors (shared with ExplorerTheme item templates) -->
+    <Color x:Key="TransparentFillColor">#00000000</Color>
+    <Color x:Key="HoverFillColor">#18FFFFFF</Color>
+    <Color x:Key="SelectionFillColor">#330078D7</Color>
+    <Color x:Key="SelectionFillHoverColor">#440078D7</Color>
+    <Color x:Key="SelectionBorderColor">#0078D7</Color>
+
+    <!-- Pane add: width expand via LayoutTransform scale + fade -->
+    <Storyboard x:Key="PaneEntranceStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         From="0"
+                         To="1"
+                         Duration="{StaticResource PaneTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetProperty="LayoutTransform.(ScaleTransform.ScaleX)"
+                         From="0"
+                         To="1"
+                         Duration="{StaticResource PaneTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <!-- Pane remove -->
+    <Storyboard x:Key="PaneExitStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         To="0"
+                         Duration="{StaticResource PaneTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetProperty="LayoutTransform.(ScaleTransform.ScaleX)"
+                         To="0"
+                         Duration="{StaticResource PaneTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <!-- Overlay show: fade + subtle scale -->
+    <Storyboard x:Key="OverlayShowStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         From="0"
+                         To="1"
+                         Duration="{StaticResource OverlayTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                         From="0.98"
+                         To="1"
+                         Duration="{StaticResource OverlayTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                         From="0.98"
+                         To="1"
+                         Duration="{StaticResource OverlayTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <!-- Overlay hide -->
+    <Storyboard x:Key="OverlayHideStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         To="0"
+                         Duration="{StaticResource OverlayTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutQuadratic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                         To="0.98"
+                         Duration="{StaticResource OverlayTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutQuadratic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                         To="0.98"
+                         Duration="{StaticResource OverlayTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutQuadratic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+</ResourceDictionary>

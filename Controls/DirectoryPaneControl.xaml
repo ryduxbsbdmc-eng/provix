@@ -1,0 +1,166 @@
+<UserControl x:Class="FileExplorer.Controls.DirectoryPaneControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:FileExplorer.Controls"
+             MinWidth="200"
+             Focusable="True"
+             PreviewMouseDown="DirectoryPaneControl_PreviewMouseDown"
+             GotKeyboardFocus="DirectoryPaneControl_GotKeyboardFocus">
+    <Border x:Name="PaneChrome"
+            Background="{StaticResource PanelBackgroundBrush}"
+            BorderBrush="{StaticResource BorderBrushDark}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <DockPanel LastChildFill="True">
+            <Grid DockPanel.Dock="Top"
+                  Margin="8,8,8,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="PathSearchBox"
+                         Style="{StaticResource AddressBarTextBoxStyle}"
+                         TextChanged="PathSearchBox_TextChanged"
+                         KeyDown="PathSearchBox_KeyDown" />
+
+                <Button x:Name="ClosePaneButton"
+                        Grid.Column="1"
+                        Width="28"
+                        Height="28"
+                        Margin="6,0,0,0"
+                        Background="#33000000"
+                        BorderThickness="0"
+                        Foreground="{StaticResource TextSecondaryBrush}"
+                        FontFamily="Segoe MDL2 Assets"
+                        FontSize="10"
+                        Content="&#xE8BB;"
+                        ToolTip="Close pane"
+                        Cursor="Hand"
+                        Click="ClosePaneButton_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="{StaticResource HoverBrush}" />
+                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#45FFFFFF" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
+
+            <Grid x:Name="FileListHost"
+                  Margin="4,0,4,8"
+                  ClipToBounds="True">
+                <ListView x:Name="FileList"
+                          SelectionMode="Extended"
+                          AllowDrop="True"
+                          ItemContainerStyle="{StaticResource ExplorerListViewItemStyle}"
+                          VirtualizingPanel.IsVirtualizing="False"
+                          MouseDoubleClick="FileList_MouseDoubleClick"
+                          ContextMenuOpening="FileList_ContextMenuOpening"
+                          PreviewMouseLeftButtonDown="FileList_PreviewMouseLeftButtonDown"
+                          PreviewMouseMove="FileList_PreviewMouseMove"
+                          PreviewMouseLeftButtonUp="FileList_PreviewMouseLeftButtonUp"
+                          LostMouseCapture="FileList_LostMouseCapture"
+                          DragOver="FileList_DragOver"
+                          Drop="FileList_Drop">
+                <ListView.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="New Folder"
+                                  Tag="Create"
+                                  Click="NewFolderMenuItem_Click" />
+                        <MenuItem x:Name="NewTextFileMenuItem"
+                                  Header="New Text File"
+                                  Tag="Create"
+                                  Click="NewTextFileMenuItem_Click" />
+                        <Separator />
+                        <MenuItem x:Name="ExtractArchiveMenuItem"
+                                  Header="Extract Archive"
+                                  Tag="ExtractArchive"
+                                  Visibility="Collapsed"
+                                  Click="ExtractArchiveMenuItem_Click" />
+                        <Separator x:Name="ExtractArchiveSeparator"
+                                   Visibility="Collapsed" />
+                        <MenuItem Header="Delete"
+                                  Tag="Delete"
+                                  Click="DeleteMenuItem_Click" />
+                    </ContextMenu>
+                </ListView.ContextMenu>
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="Name" Width="220">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="{Binding Icon}"
+                                               Width="16"
+                                               Height="16"
+                                               Margin="0,0,8,0"
+                                               VerticalAlignment="Center"
+                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                        <TextBlock Text="{Binding Name}"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ListViewItem}, Path=Foreground}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="Date modified" Width="140">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DateModified, StringFormat='{}{0:g}'}"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=ListViewItem}, Path=Foreground}" />
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="Type" Width="120">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Type}"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=ListViewItem}, Path=Foreground}" />
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="Size" Width="80">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding SizeDisplay}"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=ListViewItem}, Path=Foreground}"
+                                               HorizontalAlignment="Right" />
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                    </GridView>
+                </ListView.View>
+                </ListView>
+
+                <!-- Marquee rubber-band overlay; IsHitTestVisible=False so it never steals hits -->
+                <Canvas x:Name="MarqueeCanvas"
+                        IsHitTestVisible="False"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        ClipToBounds="True">
+                    <Rectangle x:Name="MarqueeRectangle"
+                               Visibility="Collapsed"
+                               Fill="#330078D7"
+                               Stroke="#0078D7"
+                               StrokeThickness="1"
+                               IsHitTestVisible="False"
+                               SnapsToDevicePixels="True" />
+                </Canvas>
+            </Grid>
+        </DockPanel>
+    </Border>
+</UserControl>
