@@ -1,5 +1,5 @@
 {
-  "UI_AppTitle": "File Explorer",
+  "UI_AppTitle": "provix",
   "UI_Navigation": "Navigation",
   "UI_Settings": "Settings",
   "UI_SettingsTitle": "Settings",
@@ -105,5 +105,7 @@
   "UI_AiExecuting": "Executing operations...",
   "UI_AiOpenRouterApiKey": "OpenRouter API Key",
   "UI_AiPreferredModel": "Preferred AI Model",
-  "UI_AiApiKeyHint": "Get a key at openrouter.ai"
+  "UI_AiApiKeyHint": "Get a key at openrouter.ai",
+  "UI_TerminalTitle": "PowerShell Terminal",
+  "UI_TerminalToggle": "Toggle terminal (Ctrl+`)"
 }

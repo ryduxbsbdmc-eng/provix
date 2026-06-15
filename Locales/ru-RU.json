@@ -1,5 +1,5 @@
 {
-  "UI_AppTitle": "Проводник",
+  "UI_AppTitle": "provix",
   "UI_Navigation": "Навигация",
   "UI_Settings": "Настройки",
   "UI_SettingsTitle": "Настройки",
@@ -105,5 +105,7 @@
   "UI_AiExecuting": "Выполнение операций...",
   "UI_AiOpenRouterApiKey": "Ключ API OpenRouter",
   "UI_AiPreferredModel": "Модель ИИ",
-  "UI_AiApiKeyHint": "Получите ключ на openrouter.ai"
+  "UI_AiApiKeyHint": "Получите ключ на openrouter.ai",
+  "UI_TerminalTitle": "Терминал PowerShell",
+  "UI_TerminalToggle": "Показать/скрыть терминал (Ctrl+`)"
 }

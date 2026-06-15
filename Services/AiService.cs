@@ -74,7 +74,7 @@ public sealed class AiService
             using var request = new HttpRequestMessage(HttpMethod.Post, OpenRouterEndpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             request.Headers.TryAddWithoutValidation("HTTP-Referer", "https://github.com/fileexplorer");
-            request.Headers.TryAddWithoutValidation("X-Title", "FileExplorer");
+            request.Headers.TryAddWithoutValidation("X-Title", "provix");
 
             var json = JsonSerializer.Serialize(requestBody, JsonOptions);
             request.Content = new StringContent(json, Encoding.UTF8, "application/json");

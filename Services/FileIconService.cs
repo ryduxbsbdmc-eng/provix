@@ -25,6 +25,8 @@ public sealed class FileIconService
         return _cache.GetOrAdd($"folder:{path.ToLowerInvariant()}", _ => CreateFolderIcon(path));
     }
 
+    public ImageSource GetSharedFolderIcon() => GetFolderIcon();
+
     public ImageSource GetFileIcon(string filePath)
     {
         var extension = Path.GetExtension(filePath);

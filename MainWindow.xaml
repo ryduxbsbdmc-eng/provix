@@ -4,7 +4,7 @@
         xmlns:controls="clr-namespace:FileExplorer.Controls"
         xmlns:loc="clr-namespace:FileExplorer.Markup"
         x:Name="RootWindow"
-        Title="File Explorer"
+        Title="provix"
         Width="1100"
         Height="680"
         MinWidth="720"
@@ -455,6 +455,13 @@
 
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal">
+                        <Button x:Name="TerminalToggleButton"
+                                Style="{StaticResource TitleBarButtonStyle}"
+                                Content="&#xE756;"
+                                ToolTip="Terminal"
+                                Width="40"
+                                FontSize="11"
+                                Click="TerminalToggleButton_Click" />
                         <Button x:Name="SettingsButton"
                                 Style="{StaticResource TitleBarButtonStyle}"
                                 Content="&#xE713;"
@@ -494,6 +501,8 @@
                   Margin="10,6,10,8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
+                    <RowDefinition x:Name="TerminalSplitterRow" Height="0" MinHeight="0" MaxHeight="6" />
+                    <RowDefinition x:Name="TerminalPanelRow" Height="0" MinHeight="0" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="280" MinWidth="200" />
@@ -616,7 +625,9 @@
                 <!-- Dimming layer (shared by editor, dialogs) -->
                 <Border x:Name="ChromeDimOverlay"
                         Grid.Row="0"
+                        Grid.RowSpan="3"
                         Grid.ColumnSpan="3"
+                        Panel.ZIndex="250"
                         Background="{DynamicResource DimOverlayBrush}"
                         Opacity="0"
                         Visibility="Collapsed"
@@ -1079,21 +1090,31 @@
                 <!-- Settings overlay -->
                 <Border x:Name="SettingsOverlay"
                         Grid.Row="0"
+                        Grid.RowSpan="3"
                         Grid.ColumnSpan="3"
+                        Panel.ZIndex="400"
                         Visibility="Collapsed"
-                        Background="Transparent"
-                        IsHitTestVisible="True">
+                        Background="#D9000000"
+                        IsHitTestVisible="True"
+                        SnapsToDevicePixels="True"
+                        UseLayoutRounding="True"
+                        MouseLeftButtonDown="SettingsOverlay_MouseLeftButtonDown">
                     <Border x:Name="SettingsPanel"
                             Width="420"
+                            MaxHeight="520"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Center"
                             RenderTransformOrigin="0.5,0.5"
-                            Background="{DynamicResource GlassBackgroundBrush}"
+                            Background="{DynamicResource AppPopupBackground}"
                             BorderBrush="{DynamicResource BorderBrushDark}"
                             BorderThickness="1"
                             CornerRadius="10"
                             Padding="18"
-                            SnapsToDevicePixels="True">
+                            SnapsToDevicePixels="True"
+                            UseLayoutRounding="True"
+                            MouseLeftButtonDown="SettingsPanel_MouseLeftButtonDown">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Background="Transparent">
                             <TextBlock x:Name="SettingsTitleText"
                                        Text="{loc:Loc UI_SettingsTitle}"
@@ -1109,6 +1130,7 @@
                                        Margin="0,0,0,6" />
                             <ComboBox x:Name="SettingsThemeComboBox"
                                       Margin="0,0,0,14"
+                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
                                       SelectionChanged="SettingsThemeComboBox_SelectionChanged" />
 
                             <TextBlock x:Name="SettingsTimeFormatLabel"
@@ -1130,6 +1152,7 @@
                                        Margin="0,0,0,6" />
                             <ComboBox x:Name="SettingsLanguageComboBox"
                                       Margin="0,0,0,14"
+                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
                                       DisplayMemberPath="DisplayName"
                                       SelectionChanged="SettingsLanguageComboBox_SelectionChanged" />
 
@@ -1138,14 +1161,21 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="12"
                                        Margin="0,0,0,6" />
-                            <PasswordBox x:Name="SettingsAiApiKeyBox"
-                                         Margin="0,0,0,4"
+                            <Border Margin="0,0,0,4"
+                                    Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushDark}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    SnapsToDevicePixels="True"
+                                    UseLayoutRounding="True">
+                                <TextBox x:Name="SettingsAiApiKeyBox"
                                          Padding="10,6"
-                                         Background="{DynamicResource PanelBackgroundBrush}"
+                                         Background="{DynamicResource OpaqueInputBackgroundBrush}"
                                          Foreground="{DynamicResource TextPrimaryBrush}"
-                                         BorderBrush="{DynamicResource BorderBrushDark}"
-                                         BorderThickness="1"
-                                         PasswordChanged="SettingsAiApiKeyBox_PasswordChanged" />
+                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                         BorderThickness="0"
+                                         TextChanged="SettingsAiApiKeyBox_TextChanged" />
+                            </Border>
                             <TextBlock x:Name="SettingsAiApiKeyHint"
                                        Text="{loc:Loc UI_AiApiKeyHint}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
@@ -1168,6 +1198,7 @@
                                     HorizontalAlignment="Right"
                                     Click="SettingsCloseButton_Click" />
                         </StackPanel>
+                        </ScrollViewer>
                     </Border>
                 </Border>
 
@@ -1425,6 +1456,25 @@
                         </StackPanel>
                     </Border>
                 </Border>
+
+                    <GridSplitter x:Name="TerminalSplitter"
+                                  Grid.Row="1"
+                                  Grid.ColumnSpan="3"
+                                  Height="6"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  Background="Transparent"
+                                  ResizeDirection="Rows"
+                                  ResizeBehavior="PreviousAndNext"
+                                  ShowsPreview="True"
+                                  Visibility="Collapsed" />
+
+                    <controls:PowerShellTerminalControl x:Name="PowerShellTerminal"
+                                                        Grid.Row="2"
+                                                        Grid.ColumnSpan="3"
+                                                        Visibility="Collapsed"
+                                                        CloseRequested="PowerShellTerminal_CloseRequested"
+                                                        WorkingDirectoryChanged="PowerShellTerminal_WorkingDirectoryChanged" />
             </Grid>
 
             <!-- Status bar -->
