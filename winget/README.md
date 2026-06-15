@@ -49,9 +49,10 @@ Workflow `.github/workflows/winget.yml` runs on each published release:
 
 ### WINGET_TOKEN setup
 
-1. GitHub → Settings → Developer settings → Personal access tokens (classic)
-2. Create token with `public_repo` scope
+1. GitHub → Settings → Developer settings → Personal access tokens (**classic**)
+2. Create token with **`public_repo`** scope (fine-grained tokens do not work for cross-repo PRs)
 3. Repository → Settings → Secrets → Actions → `WINGET_TOKEN`
+4. Do **not** use `GITHUB_TOKEN` — it cannot open PRs in `microsoft/winget-pkgs`
 
 ## Manual submission
 

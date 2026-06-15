@@ -75,7 +75,6 @@ jobs:
           }
 
       - name: Submit to WinGet community repo
-        if: ${{ secrets.WINGET_TOKEN != '' }}
         shell: pwsh
         env:
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
@@ -84,17 +83,17 @@ jobs:
           $version = Split-Path $dir -Leaf
           $exe = Get-ChildItem wingetcreate -Recurse -Filter wingetcreate.exe | Select-Object -First 1
           if (-not $exe) { throw "wingetcreate.exe not found" }
+
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_TOKEN)) {
+            Write-Host "::warning::WINGET_TOKEN secret is not configured. Manifest was uploaded as workflow artifact only."
+            Write-Host ""
+            Write-Host "To enable automatic PR submission to microsoft/winget-pkgs:"
+            Write-Host "1. Create a GitHub classic PAT with the public_repo scope"
+            Write-Host "2. Add it as repository secret WINGET_TOKEN"
+            Write-Host "3. Re-run this workflow from Actions tab"
+            exit 0
+          }
+
           & $exe.FullName submit $dir `
             --prtitle "Provix.Provix $version" `
             --token "$env:WINGET_TOKEN"
-
-      - name: WinGet token not configured
-        if: ${{ secrets.WINGET_TOKEN == '' }}
-        shell: pwsh
-        run: |
-          Write-Host "::warning::WINGET_TOKEN secret is not configured. Manifest was uploaded as workflow artifact only."
-          Write-Host ""
-          Write-Host "To enable automatic PR submission to microsoft/winget-pkgs:"
-          Write-Host "1. Create a GitHub classic PAT with the public_repo scope"
-          Write-Host "2. Add it as repository secret WINGET_TOKEN"
-          Write-Host "3. Re-run this workflow from Actions tab"
