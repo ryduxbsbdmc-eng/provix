@@ -99,12 +99,12 @@ jobs:
       - name: Submit to WinGet community repo
         shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           $dir = "${{ steps.manifest.outputs.dir }}"
           $exe = Get-ChildItem wingetcreate -Recurse -Filter wingetcreate.exe | Select-Object -First 1
           if (-not $exe) { throw "wingetcreate.exe not found" }
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_TOKEN)) { throw "WINGET_TOKEN is not configured" }
           & $exe.FullName submit $dir `
-            --package-git-repo "https://github.com/${{ github.repository }}" `
-            --package-git-token "$env:GITHUB_TOKEN" `
-            --pull-request-to-https://github.com/microsoft/winget-pkgs
+            --prtitle "Add Provix.Provix" `
+            --token "$env:WINGET_TOKEN"
