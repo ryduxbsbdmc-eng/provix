@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: Provix.Provix
+PackageVersion: __PACKAGE_VERSION__
+MinimumOSVersion: 10.0.0.0
+InstallerType: inno
+Scope: user
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+UpgradeBehavior: install
+Platform:
+- Windows.Desktop
+AppsAndFeaturesEntries:
+- DisplayName: Provix
+  DisplayVersion: __PACKAGE_VERSION__
+  Publisher: Provix
+  ProductCode: 8F4E2A91-6C3D-4B8E-9F1A-2D7E5B4C9013_is1
+Installers:
+- Architecture: x64
+  InstallerUrl: __INSTALLER_URL__
+  InstallerSha256: __INSTALLER_SHA256__
+  InstallerSwitches:
+    Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+    SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+    Interactive: /
+  InstallationMetadata:
+    DefaultInstallLocation: '%LOCALAPPDATA%\Programs\Provix'
+ManifestType: installer
+ManifestVersion: 1.6.0

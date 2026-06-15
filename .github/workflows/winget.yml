@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   winget:
@@ -20,72 +19,37 @@ jobs:
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          function New-LocaleFiles([string]$dir, [string]$packageVersion, [string]$releaseTag) {
-            Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.en-US.yaml" "$dir/Provix.Provix.locale.en-US.yaml"
-            Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.ru-RU.yaml" "$dir/Provix.Provix.locale.ru-RU.yaml"
-            foreach ($file in @("$dir/Provix.Provix.locale.en-US.yaml", "$dir/Provix.Provix.locale.ru-RU.yaml")) {
-              (Get-Content $file -Raw) `
-                -replace 'PackageVersion: .*', "PackageVersion: $packageVersion" `
-                -replace 'releases/tag/[^\r\n]+', "releases/tag/$releaseTag" |
-                Set-Content $file
-            }
-          }
-
           if ($env:RELEASE_TAG) {
-            $tag = $env:RELEASE_TAG -replace '^v', ''
-            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/$($env:RELEASE_TAG)" -Headers @{ "User-Agent" = "provix-winget" }
+            $releaseTag = $env:RELEASE_TAG
+            $version = $releaseTag -replace '^v', ''
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:REPOSITORY/releases/tags/$releaseTag" -Headers @{ "User-Agent" = "provix-winget" }
             $asset = $release.assets | Where-Object { $_.name -like 'Provix-Setup-*.exe' } | Select-Object -First 1
-            if (-not $asset) { throw "Provix-Setup-*.exe asset not found in release $($env:RELEASE_TAG)" }
-
-            $installerVersion = if ($asset.name -match 'Provix-Setup-(.+)\.exe') { $Matches[1] } else { $tag }
-            $dir = "winget-generated/Provix.Provix/$tag"
-            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            if (-not $asset) { throw "Provix-Setup-*.exe asset not found in release $releaseTag" }
 
             Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $asset.name
-            $sha = (Get-FileHash $asset.name -Algorithm SHA256).Hash.ToLowerInvariant()
-
-            @"
-          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
-
-          PackageIdentifier: Provix.Provix
-          PackageVersion: $tag
-          DefaultLocale: en-US
-          ManifestType: version
-          ManifestVersion: 1.6.0
-          "@ | Set-Content "$dir/Provix.Provix.yaml"
-
-            @"
-          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
-
-          PackageIdentifier: Provix.Provix
-          PackageVersion: $tag
-          MinimumOSVersion: 10.0.0.0
-          InstallerType: inno
-          Scope: user
-          InstallModes:
-          - interactive
-          - silent
-          - silentWithProgress
-          UpgradeBehavior: install
-          AppsAndFeaturesEntries:
-          - DisplayName: Provix version $installerVersion
-            ProductCode: 8F4E2A91-6C3D-4B8E-9F1A-2D7E5B4C9013_is1
-          Installers:
-          - Architecture: x64
-            InstallerUrl: $($asset.browser_download_url)
-            InstallerSha256: $sha
-          ManifestType: installer
-          ManifestVersion: 1.6.0
-          "@ | Set-Content "$dir/Provix.Provix.installer.yaml"
-
-            New-LocaleFiles $dir $tag $tag
+            $dir = "winget-generated/Provix.Provix/$version"
+            & "$env:GITHUB_WORKSPACE/scripts/New-WingetManifest.ps1" `
+              -PackageVersion $version `
+              -ReleaseTag $releaseTag `
+              -InstallerPath $asset.name `
+              -InstallerUrl $asset.browser_download_url `
+              -OutputDir $dir `
+              -Repository $env:REPOSITORY
           } else {
-            $dir = "winget/Provix.Provix/1.0.2"
+            $dir = "winget/Provix.Provix/1.3.5"
             if (-not (Test-Path $dir)) { throw "Manifest directory not found: $dir" }
           }
 
           "dir=$dir" >> $env:GITHUB_OUTPUT
+
+      - name: Upload manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifest
+          path: ${{ steps.manifest.outputs.dir }}
+          if-no-files-found: error
 
       - name: Download WingetCreate
         shell: pwsh
@@ -96,15 +60,41 @@ jobs:
           New-Item -ItemType Directory -Force -Path wingetcreate | Out-Null
           Invoke-WebRequest $asset.browser_download_url -OutFile wingetcreate/wingetcreate.exe
 
-      - name: Submit to WinGet community repo
+      - name: Validate manifest
         shell: pwsh
-        env:
-          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           $dir = "${{ steps.manifest.outputs.dir }}"
           $exe = Get-ChildItem wingetcreate -Recurse -Filter wingetcreate.exe | Select-Object -First 1
           if (-not $exe) { throw "wingetcreate.exe not found" }
-          if ([string]::IsNullOrWhiteSpace($env:WINGET_TOKEN)) { throw "WINGET_TOKEN is not configured" }
+
+          & winget validate --manifest $dir --disable-interactivity
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "winget validate failed; retrying with wingetcreate..."
+            & $exe.FullName validate $dir
+            if ($LASTEXITCODE -ne 0) { throw "Manifest validation failed" }
+          }
+
+      - name: Submit to WinGet community repo
+        if: ${{ secrets.WINGET_TOKEN != '' }}
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $dir = "${{ steps.manifest.outputs.dir }}"
+          $version = Split-Path $dir -Leaf
+          $exe = Get-ChildItem wingetcreate -Recurse -Filter wingetcreate.exe | Select-Object -First 1
+          if (-not $exe) { throw "wingetcreate.exe not found" }
           & $exe.FullName submit $dir `
-            --prtitle "Add Provix.Provix" `
+            --prtitle "Provix.Provix $version" `
             --token "$env:WINGET_TOKEN"
+
+      - name: WinGet token not configured
+        if: ${{ secrets.WINGET_TOKEN == '' }}
+        shell: pwsh
+        run: |
+          Write-Host "::warning::WINGET_TOKEN secret is not configured. Manifest was uploaded as workflow artifact only."
+          Write-Host ""
+          Write-Host "To enable automatic PR submission to microsoft/winget-pkgs:"
+          Write-Host "1. Create a GitHub classic PAT with the public_repo scope"
+          Write-Host "2. Add it as repository secret WINGET_TOKEN"
+          Write-Host "3. Re-run this workflow from Actions tab"

@@ -44,6 +44,9 @@ openrouter.key
 [Ll]ogs/
 [Oo]ut/
 publish/
+installer/*.exe
+wingetcreate/
+winget-generated/
 artifacts/
 TestResults/
 [Bb]uild/

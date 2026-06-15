@@ -1886,8 +1886,55 @@
                             <ComboBox x:Name="SettingsLanguageComboBox"
                                       Margin="0,0,0,14"
                                       Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
                                       DisplayMemberPath="DisplayName"
                                       SelectionChanged="SettingsLanguageComboBox_SelectionChanged" />
+
+                            <TextBlock x:Name="SettingsThemeLabel"
+                                       Text="{loc:Loc UI_Theme}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <ComboBox x:Name="SettingsThemeComboBox"
+                                      Margin="0,0,0,6"
+                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      SelectionChanged="SettingsThemeComboBox_SelectionChanged" />
+                            <TextBlock x:Name="SettingsThemeDetailsText"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8" />
+                            <StackPanel x:Name="SettingsCustomThemePanel"
+                                        Margin="0,0,0,14"
+                                        Visibility="Collapsed">
+                                <TextBox x:Name="SettingsCustomThemePathBox"
+                                         Style="{StaticResource AddressBarTextBoxStyle}"
+                                         IsReadOnly="True"
+                                         Margin="0,0,0,8" />
+                                <WrapPanel Margin="0,0,0,8">
+                                    <Button x:Name="SettingsBrowseThemeButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsBrowseThemeButton_Click" />
+                                    <Button x:Name="SettingsClearThemeButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsClearThemeButton_Click" />
+                                    <Button x:Name="SettingsExportThemeButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsExportThemeButton_Click" />
+                                    <Button x:Name="SettingsSyncThemesButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsSyncThemesButton_Click" />
+                                </WrapPanel>
+                                <TextBlock x:Name="SettingsCustomThemeHint"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
 
                             <TextBlock x:Name="SettingsAiProviderLabel"
                                        Text="{loc:Loc UI_AiProvider}"
@@ -1963,50 +2010,6 @@
 
                             <StackPanel x:Name="SettingsCustomizationPanel"
                                         Visibility="Collapsed">
-                            <TextBlock x:Name="SettingsThemeLabel"
-                                       Text="{loc:Loc UI_Theme}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="12"
-                                       Margin="0,0,0,6" />
-                            <ComboBox x:Name="SettingsThemeComboBox"
-                                      Margin="0,0,0,6"
-                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
-                                      SelectionChanged="SettingsThemeComboBox_SelectionChanged" />
-                            <TextBlock x:Name="SettingsThemeDetailsText"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="10"
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,8" />
-                            <StackPanel x:Name="SettingsCustomThemePanel"
-                                        Margin="0,0,0,14">
-                                <TextBox x:Name="SettingsCustomThemePathBox"
-                                         Style="{StaticResource AddressBarTextBoxStyle}"
-                                         IsReadOnly="True"
-                                         Margin="0,0,0,8" />
-                                <WrapPanel Margin="0,0,0,8">
-                                    <Button x:Name="SettingsBrowseThemeButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsBrowseThemeButton_Click" />
-                                    <Button x:Name="SettingsClearThemeButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsClearThemeButton_Click" />
-                                    <Button x:Name="SettingsExportThemeButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsExportThemeButton_Click" />
-                                    <Button x:Name="SettingsSyncThemesButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsSyncThemesButton_Click" />
-                                </WrapPanel>
-                                <TextBlock x:Name="SettingsCustomThemeHint"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           FontSize="10"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-
                             <TextBlock x:Name="SettingsCustomFontLabel"
                                        Text="{loc:Loc UI_Font}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"

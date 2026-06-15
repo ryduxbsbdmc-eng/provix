@@ -3856,6 +3856,11 @@ public partial class MainWindow : Window
                     pane.Control.ResetThemeBrushes();
                     pane.Control.SetIsActive(pane == _activePane);
                 }
+                if (SettingsOverlay.Visibility == Visibility.Visible)
+                {
+                    UpdateCustomThemePanelVisibility();
+                    UpdateThemeDetailsText();
+                }
                 break;
             case nameof(AppSettings.TimeFormat):
                 RefreshAllPaneDateDisplays();
@@ -3919,6 +3924,9 @@ public partial class MainWindow : Window
         SettingsGeneralTabButton.Content = loc["UI_SettingsTabGeneral"];
         SettingsCustomizationTabButton.Content = loc["UI_SettingsTabCustomization"];
         SettingsSupportTabButton.Content = loc["UI_SettingsTabSupport"];
+        SettingsTimeFormatLabel.Text = loc["UI_TimeFormat"];
+        SettingsLanguageLabel.Text = loc["UI_Language"];
+        SettingsThemeLabel.Text = loc["UI_Theme"];
         SettingsUseBuiltInMediaViewerCheckBox.Content = loc["UI_UseBuiltInMediaViewer"];
         SettingsUseBuiltInMediaViewerHint.Text = loc["UI_UseBuiltInMediaViewerHint"];
         SettingsCustomFontLabel.Text = loc["UI_Font"];
@@ -4014,6 +4022,14 @@ public partial class MainWindow : Window
             UpdateCustomThemePanelVisibility();
             UpdateThemeDetailsText();
 
+            var locales = LocalizationManager.Instance.GetAvailableLocales();
+            SettingsLanguageComboBox.ItemsSource = locales;
+            var selectedLocale = locales.FirstOrDefault(locale =>
+                locale.Code.Equals(
+                    SettingsManager.Instance.Current.Language,
+                    StringComparison.OrdinalIgnoreCase)) ?? locales.FirstOrDefault();
+            SettingsLanguageComboBox.SelectedItem = selectedLocale;
+
             PopulateIconStyleComboBox(loc);
             SelectIconPackComboBoxItem(
                 SettingsManager.Instance.Current.FileIconStyle,
@@ -4027,13 +4043,6 @@ public partial class MainWindow : Window
 
             SettingsUseBuiltInMediaViewerCheckBox.IsChecked =
                 SettingsManager.Instance.Current.UseBuiltInMediaViewer;
-
-            var locales = LocalizationManager.Instance.GetAvailableLocales();
-            SettingsLanguageComboBox.ItemsSource = locales;
-            SettingsLanguageComboBox.SelectedItem = locales.FirstOrDefault(locale =>
-                locale.Code.Equals(
-                    SettingsManager.Instance.Current.Language,
-                    StringComparison.OrdinalIgnoreCase)) ?? locales.FirstOrDefault();
 
             PopulateAiProviderComboBox(loc);
             SelectAiProviderComboBoxItem(SettingsManager.Instance.Current.AiProvider);
