@@ -49,6 +49,44 @@ $user = Invoke-RestMethod `
     }
 Write-Host "Authenticated as $($user.login)"
 
+# Classic PAT exposes scopes in response headers; fine-grained tokens do not.
+try {
+    $scopeResponse = Invoke-WebRequest `
+        -Uri "https://api.github.com/user" `
+        -Headers @{
+            Authorization = "Bearer $token"
+            "User-Agent"  = "provix-winget"
+        } `
+        -Method Get
+    $scopes = $scopeResponse.Headers['X-OAuth-Scopes']
+    if ($scopes) {
+        Write-Host "Token scopes: $scopes"
+        if ($scopes -notmatch 'public_repo|\brepo\b') {
+            throw "WINGET_TOKEN must be a classic PAT with public_repo scope."
+        }
+    }
+    else {
+        Write-Host "Token scopes header missing (likely fine-grained token)."
+        Write-Host "winget submission requires a classic PAT with public_repo scope."
+    }
+}
+catch {
+    if ($_.Exception.Message -match 'public_repo') { throw }
+}
+
+Write-Host "Checking push access to fork $ForkOwner/winget-pkgs..."
+try {
+    Invoke-RestMethod `
+        -Uri "https://api.github.com/repos/$ForkOwner/winget-pkgs" `
+        -Headers @{
+            Authorization = "Bearer $token"
+            "User-Agent"  = "provix-winget"
+        } | Out-Null
+}
+catch {
+    throw "Cannot access fork $ForkOwner/winget-pkgs with WINGET_TOKEN. Use a classic PAT with public_repo scope."
+}
+
 $existingPr = gh pr list `
     --repo $UpstreamRepo `
     --head "${ForkOwner}:${branch}" `
@@ -90,8 +128,23 @@ if (git diff --cached --quiet) {
 }
 
 git commit -m "Add Provix.Provix version $PackageVersion"
-git push --force fork "${branch}:${branch}"
 
+Write-Host "Pushing branch to fork..."
+git push --force fork "${branch}:${branch}"
+if ($LASTEXITCODE -ne 0) {
+    throw @"
+Failed to push branch to https://github.com/$ForkOwner/winget-pkgs.
+
+Your WINGET_TOKEN cannot write to the fork. Fix:
+1. Delete current WINGET_TOKEN secret
+2. Create a classic PAT: https://github.com/settings/tokens
+3. Enable ONLY the public_repo checkbox
+4. Save as repository secret WINGET_TOKEN
+5. Re-run Publish to WinGet workflow
+"@
+}
+
+Write-Host "Creating pull request..."
 $prUrl = gh pr create `
     --repo $UpstreamRepo `
     --head "${ForkOwner}:${branch}" `
@@ -104,5 +157,9 @@ Automated manifest submission for Provix $PackageVersion.
 - Installer: Inno Setup (per-user)
 - Release: https://github.com/ryduxbsbdmc-eng/provix/releases/tag/v$PackageVersion
 "@
+
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($prUrl)) {
+    throw "Failed to create pull request. Ensure WINGET_TOKEN is a classic PAT with public_repo scope."
+}
 
 Write-Host "WinGet PR created: $prUrl"
