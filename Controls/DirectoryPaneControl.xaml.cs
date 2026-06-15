@@ -38,6 +38,7 @@ public partial class DirectoryPaneControl : UserControl
     public event RoutedEventHandler? NewTextFileRequested;
     public event RoutedEventHandler? DeleteRequested;
     public event RoutedEventHandler? ExtractArchiveRequested;
+    public event RoutedEventHandler? EncryptFolderRequested;
     public event EventHandler<FileDropEventArgs>? FileDropRequested;
     public event EventHandler<GitDirectoryEventArgs>? GitInitRequested;
     public event EventHandler<GitDirectoryEventArgs>? GitCommitRequested;
@@ -58,6 +59,7 @@ public partial class DirectoryPaneControl : UserControl
     public TextBox PathSearchTextBox => PathSearchBox;
 
     public MenuItem ExtractArchiveMenuItemControl => ExtractArchiveMenuItem;
+    public MenuItem EncryptFolderMenuItemControl => EncryptFolderMenuItem;
 
     public MenuItem GitInitMenuItemControl => GitInitMenuItem;
 
@@ -70,6 +72,7 @@ public partial class DirectoryPaneControl : UserControl
     public MenuItem AiExecuteQueryMenuItemControl => AiExecuteQueryMenuItem;
 
     public Separator ExtractArchiveSeparatorControl => ExtractArchiveSeparator;
+    public Separator EncryptFolderSeparatorControl => EncryptFolderSeparator;
 
     public void ResetThemeBrushes()
     {
@@ -592,6 +595,9 @@ public partial class DirectoryPaneControl : UserControl
 
     private void ExtractArchiveMenuItem_Click(object sender, RoutedEventArgs e) =>
         ExtractArchiveRequested?.Invoke(sender, e);
+
+    private void EncryptFolderMenuItem_Click(object sender, RoutedEventArgs e) =>
+        EncryptFolderRequested?.Invoke(sender, e);
 
     private void AiExecuteQueryMenuItem_Click(object sender, RoutedEventArgs e) =>
         AiExecuteQueryRequested?.Invoke(sender, e);

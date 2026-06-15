@@ -14,6 +14,8 @@ public sealed partial class PowerShellProcessHost : IDisposable
     private StreamWriter? _stdin;
     private string _workingDirectory = string.Empty;
     private bool _disposed;
+    private readonly object _stopLock = new();
+    private volatile bool _stopRequested;
 
     public event EventHandler<string>? OutputReceived;
     public event EventHandler<string>? ErrorReceived;
@@ -27,6 +29,7 @@ public sealed partial class PowerShellProcessHost : IDisposable
     public void Start(string workingDirectory)
     {
         Stop();
+        _stopRequested = false;
 
         _workingDirectory = ResolveExistingDirectory(workingDirectory)
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -61,38 +64,60 @@ public sealed partial class PowerShellProcessHost : IDisposable
         _process.BeginErrorReadLine();
     }
 
+    public void BeginStop()
+    {
+        if (_process is null || _stopRequested)
+            return;
+
+        _stopRequested = true;
+        _ = Task.Run(StopCore);
+    }
+
     public void Stop()
     {
         if (_process is null)
             return;
 
-        try
-        {
-            _process.OutputDataReceived -= OnOutputDataReceived;
-            _process.ErrorDataReceived -= OnErrorDataReceived;
-            _process.Exited -= OnProcessExited;
+        _stopRequested = true;
+        StopCore();
+    }
 
-            if (!_process.HasExited)
+    private void StopCore()
+    {
+        lock (_stopLock)
+        {
+            if (_process is null)
+                return;
+
+            try
             {
-                try
+                _process.OutputDataReceived -= OnOutputDataReceived;
+                _process.ErrorDataReceived -= OnErrorDataReceived;
+                _process.Exited -= OnProcessExited;
+
+                if (!_process.HasExited)
                 {
-                    _stdin?.WriteLine("exit");
-                    _stdin?.Flush();
-                    if (!_process.WaitForExit(1500))
-                        _process.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                    try { _process.Kill(entireProcessTree: true); } catch { /* ignore */ }
+                    try
+                    {
+                        _stdin?.WriteLine("exit");
+                        _stdin?.Flush();
+                        if (!_process.WaitForExit(200))
+                            _process.Kill(entireProcessTree: false);
+                    }
+                    catch
+                    {
+                        try { _process.Kill(entireProcessTree: false); } catch { /* ignore */ }
+                    }
                 }
             }
-        }
-        finally
-        {
-            _stdin?.Dispose();
-            _stdin = null;
-            _process.Dispose();
-            _process = null;
+            finally
+            {
+                _stdin?.Dispose();
+                _stdin = null;
+                _process.Dispose();
+                _process = null;
+                _stopRequested = false;
+            }
         }
     }
 

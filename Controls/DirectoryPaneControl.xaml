@@ -168,6 +168,13 @@
                                   Click="ExtractArchiveMenuItem_Click" />
                         <Separator x:Name="ExtractArchiveSeparator"
                                    Visibility="Collapsed" />
+                        <MenuItem x:Name="EncryptFolderMenuItem"
+                                  Header="{loc:Loc UI_EncryptFolder}"
+                                  Tag="EncryptFolder"
+                                  Visibility="Collapsed"
+                                  Click="EncryptFolderMenuItem_Click" />
+                        <Separator x:Name="EncryptFolderSeparator"
+                                   Visibility="Collapsed" />
                         <MenuItem x:Name="DeleteMenuItem"
                                   Header="{loc:Loc UI_Delete}"
                                   Tag="Delete"

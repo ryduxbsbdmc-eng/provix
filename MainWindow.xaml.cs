@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private readonly NavigationHistoryService _navigationHistory;
     private readonly RecycleBinService _recycleBinService = new();
     private readonly ArchiveService _archiveService = new();
+    private readonly EncryptedZipService _encryptedZipService = new();
     private readonly FileMoveService _fileMoveService = new();
     private readonly AiService _aiService = new();
     private readonly AiCommandExecutor _aiCommandExecutor = new();
@@ -60,9 +61,14 @@ public partial class MainWindow : Window
     private List<FileSystemEntry> _pendingDeleteEntries = [];
     private DirectoryPaneState? _deleteTargetPane;
 
+    private string? _encryptFolderSourcePath;
+    private DirectoryPaneState? _encryptTargetPane;
+    private TaskCompletionSource<string?>? _archivePasswordPrompt;
     private string? _openArchivePath;
+    private string? _openArchivePassword;
     private bool _isArchiveViewerOpen;
     private bool _isExtracting;
+    private bool _isEncrypting;
     private bool _paneRemoveInProgress;
     private bool _suppressSettingsUiChange;
     private bool _suppressAiApiKeyChange;
@@ -98,7 +104,7 @@ public partial class MainWindow : Window
     {
         _terminalAnimationInProgress = false;
         PersistSessionSettings();
-        FinishHideTerminal(animate: false);
+        FinishHideTerminal(animate: false, waitForProcessStop: true);
     }
 
     public void PersistSessionSettings()
@@ -279,6 +285,7 @@ public partial class MainWindow : Window
         control.NewTextFileRequested += (_, _) => ShowNamePrompt(NamePromptMode.NewTextFile, pane);
         control.DeleteRequested += (_, _) => DeleteSelectedItems(pane);
         control.ExtractArchiveRequested += async (_, _) => await ExtractSelectedArchivesFromPaneAsync(pane);
+        control.EncryptFolderRequested += (_, _) => BeginEncryptFolderWorkflow(pane);
         control.FileDropRequested += (_, e) => HandleFileDrop(pane, e.SourcePaths, e.TargetDirectory);
         control.GitInitRequested += (_, e) => HandleGitInit(pane, e.TargetDirectory);
         control.GitCommitRequested += (_, _) => HandleGitCommitRequest(pane);
@@ -507,6 +514,12 @@ public partial class MainWindow : Window
             node.Children.Clear();
             foreach (var child in childNodes)
                 node.Children.Add(child);
+        }
+        catch (Exception ex)
+        {
+            node.Children.Clear();
+            if (ActivePane is not null)
+                StatusText.Text = ex.Message;
         }
         finally
         {
@@ -1238,10 +1251,13 @@ public partial class MainWindow : Window
         UiAnimationHelper.HideOverlay(EditorOverlay, PopChromeDimOverlay);
     }
 
+    private bool _terminalSuppressedForModal;
+
     private void PushChromeDimOverlay()
     {
         if (_chromeDimDepth == 0)
         {
+            SuppressTerminalForModalIfNeeded();
             ChromeDimOverlay.Visibility = Visibility.Visible;
             ChromeDimOverlay.IsHitTestVisible = true;
             ChromeDimOverlay.BeginAnimation(UIElement.OpacityProperty, UiAnimationHelper.CreateDimFadeAnimation(0, 1, fadeIn: true));
@@ -1269,8 +1285,33 @@ public partial class MainWindow : Window
             ChromeDimOverlay.Visibility = Visibility.Collapsed;
             ChromeDimOverlay.IsHitTestVisible = false;
             ChromeDimOverlay.Opacity = 0;
+            RestoreTerminalAfterModalIfNeeded();
         };
         ChromeDimOverlay.BeginAnimation(UIElement.OpacityProperty, animation);
+    }
+
+    private void SuppressTerminalForModalIfNeeded()
+    {
+        if (!_isTerminalVisible || _terminalSuppressedForModal)
+            return;
+
+        _terminalSuppressedForModal = true;
+        TerminalSplitter.Visibility = Visibility.Collapsed;
+        PowerShellTerminal.Visibility = Visibility.Collapsed;
+    }
+
+    private void RestoreTerminalAfterModalIfNeeded()
+    {
+        if (!_terminalSuppressedForModal)
+            return;
+
+        _terminalSuppressedForModal = false;
+
+        if (!_isTerminalVisible)
+            return;
+
+        TerminalSplitter.Visibility = Visibility.Visible;
+        PowerShellTerminal.Visibility = Visibility.Visible;
     }
 
     private void PaneFileList_ContextMenuOpening(DirectoryPaneState pane, ContextMenuEventArgs e) =>
@@ -1289,11 +1330,17 @@ public partial class MainWindow : Window
             .Where(entry => !entry.IsDirectory && ArchiveHelper.IsArchiveFile(entry.FullPath))
             .ToList();
         var isArchiveSelection = archiveEntries.Count > 0;
+        var folderEntries = selectedEntries.Where(entry => entry.IsDirectory).ToList();
+        var isSingleFolderSelection = folderEntries.Count == 1 && selectedEntries.Count == 1;
 
         pane.Control.ExtractArchiveMenuItemControl.Visibility =
             isArchiveSelection ? Visibility.Visible : Visibility.Collapsed;
         pane.Control.ExtractArchiveSeparatorControl.Visibility =
             isArchiveSelection ? Visibility.Visible : Visibility.Collapsed;
+        pane.Control.EncryptFolderMenuItemControl.Visibility =
+            isSingleFolderSelection ? Visibility.Visible : Visibility.Collapsed;
+        pane.Control.EncryptFolderSeparatorControl.Visibility =
+            isSingleFolderSelection ? Visibility.Visible : Visibility.Collapsed;
 
         var hasResolvedPath = TryGetGitContextDirectory(pane, out var resolvedDirectory);
         var repositoryRoot = hasResolvedPath
@@ -1320,6 +1367,7 @@ public partial class MainWindow : Window
             {
                 "Delete" => hasSelection,
                 "ExtractArchive" => isArchiveSelection && hasResolvedPath && !_isExtracting,
+                "EncryptFolder" => isSingleFolderSelection && hasResolvedPath && !_isExtracting && !_isEncrypting,
                 "ShowWindowsMenu" => hasSelection || hasResolvedPath,
                 _ => hasResolvedPath
             };
@@ -1884,9 +1932,15 @@ public partial class MainWindow : Window
 
         try
         {
+            var password = await ResolveArchivePasswordAsync(_openArchivePath, _openArchivePassword);
+            if (password is null && _archiveService.RequiresPassword(_openArchivePath))
+                return;
+
+            _openArchivePassword = password;
+
             foreach (var entry in entries)
             {
-                await _archiveService.ExtractEntryAsync(_openArchivePath, entry.EntryKey, activePath);
+                await _archiveService.ExtractEntryAsync(_openArchivePath, entry.EntryKey, activePath, password);
                 extractedCount++;
             }
 
@@ -1898,6 +1952,14 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             StatusText.Text = "Extraction cancelled.";
+        }
+        catch (Exception ex) when (ArchiveHelper.IsPasswordRelatedError(ex))
+        {
+            _openArchivePassword = null;
+            var message = LocalizationManager.Instance["UI_ArchivePasswordWrong"];
+            if (_isArchiveViewerOpen)
+                ShowArchiveError(message);
+            StatusText.Text = message;
         }
         catch (Exception ex)
         {
@@ -1913,6 +1975,7 @@ public partial class MainWindow : Window
                 ArchiveExtractButton.IsEnabled = true;
         }
     }
+
     private async Task OpenArchiveViewerAsync(string archivePath)
     {
         if (TextFileHelper.TryGetFileSize(archivePath, out var archiveSize) &&
@@ -1931,6 +1994,7 @@ public partial class MainWindow : Window
         CloseArchiveViewer(animate: false);
 
         _openArchivePath = archivePath;
+        _openArchivePassword = null;
         _isArchiveViewerOpen = true;
 
         ArchiveFileNameText.Text = Path.GetFileName(archivePath);
@@ -1946,11 +2010,26 @@ public partial class MainWindow : Window
 
         try
         {
-            var entries = await Task.Run(() => _archiveService.GetEntries(archivePath));
+            var password = await ResolveArchivePasswordAsync(archivePath);
+            if (password is null && _archiveService.RequiresPassword(archivePath))
+            {
+                CloseArchiveViewer(animate: false);
+                return;
+            }
+
+            _openArchivePassword = password;
+            var entries = await Task.Run(() => _archiveService.GetEntries(archivePath, password));
             ArchiveContentsList.ItemsSource = entries;
             ArchiveExtractButton.IsEnabled = !_isExtracting;
             _navigationHistory.RecordFile(archivePath);
             StatusText.Text = $"{entries.Count} file(s) in {Path.GetFileName(archivePath)}";
+        }
+        catch (Exception ex) when (ArchiveHelper.IsPasswordRelatedError(ex))
+        {
+            _openArchivePassword = null;
+            ShowArchiveError(LocalizationManager.Instance["UI_ArchivePasswordWrong"]);
+            ArchiveContentsList.Visibility = Visibility.Collapsed;
+            StatusText.Text = LocalizationManager.Instance["UI_ArchivePasswordWrong"];
         }
         catch (Exception ex)
         {
@@ -1966,6 +2045,7 @@ public partial class MainWindow : Window
             return;
 
         _openArchivePath = null;
+        _openArchivePassword = null;
         _isArchiveViewerOpen = false;
         ArchiveContentsList.ItemsSource = null;
         HideArchiveError();
@@ -2014,13 +2094,24 @@ public partial class MainWindow : Window
 
         try
         {
-            await _archiveService.ExtractAllAsync(archivePath, destinationDirectory);
+            var password = await ResolveArchivePasswordAsync(archivePath);
+            if (password is null && _archiveService.RequiresPassword(archivePath))
+                return;
+
+            await _archiveService.ExtractAllAsync(archivePath, destinationDirectory, password);
             StatusText.Text = $"Extracted to \"{folderName}\".";
             RefreshDirectoryListing(pane);
         }
         catch (OperationCanceledException)
         {
             StatusText.Text = "Extraction cancelled.";
+        }
+        catch (Exception ex) when (ArchiveHelper.IsPasswordRelatedError(ex))
+        {
+            var message = LocalizationManager.Instance["UI_ArchivePasswordWrong"];
+            if (_isArchiveViewerOpen)
+                ShowArchiveError(message);
+            StatusText.Text = message;
         }
         catch (Exception ex)
         {
@@ -2039,6 +2130,9 @@ public partial class MainWindow : Window
 
     private static string GetArchiveErrorMessage(Exception ex)
     {
+        if (ArchiveHelper.IsPasswordRelatedError(ex))
+            return LocalizationManager.Instance["UI_ArchivePasswordWrong"];
+
         var typeName = ex.GetType().Name;
         if (typeName.Contains("Archive", StringComparison.OrdinalIgnoreCase) ||
             ex is InvalidOperationException or IOException)
@@ -2047,6 +2141,331 @@ public partial class MainWindow : Window
         }
 
         return ex.Message;
+    }
+
+    private async Task<string?> ResolveArchivePasswordAsync(string archivePath, string? knownPassword = null)
+    {
+        if (!string.IsNullOrEmpty(knownPassword))
+            return knownPassword;
+
+        if (!_archiveService.RequiresPassword(archivePath))
+            return null;
+
+        return await PromptArchivePasswordAsync();
+    }
+
+    private Task<string?> PromptArchivePasswordAsync()
+    {
+        _archivePasswordPrompt = new TaskCompletionSource<string?>();
+        ArchivePasswordBox.Password = string.Empty;
+        HideArchivePasswordError();
+        ArchivePasswordOverlay.Visibility = Visibility.Visible;
+        PushChromeDimOverlay();
+        UiAnimationHelper.ShowOverlay(ArchivePasswordPanel);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            ArchivePasswordBox.Focus();
+            Keyboard.Focus(ArchivePasswordBox);
+        }, DispatcherPriority.Loaded);
+
+        return _archivePasswordPrompt.Task;
+    }
+
+    private void CompleteArchivePasswordPrompt(string? password)
+    {
+        _archivePasswordPrompt?.TrySetResult(password);
+        _archivePasswordPrompt = null;
+        HideArchivePasswordOverlay();
+    }
+
+    private void HideArchivePasswordOverlay()
+    {
+        if (ArchivePasswordOverlay.Visibility != Visibility.Visible)
+            return;
+
+        void FinishHide()
+        {
+            ArchivePasswordOverlay.Visibility = Visibility.Collapsed;
+            ArchivePasswordPanel.Visibility = Visibility.Visible;
+            ArchivePasswordBox.Password = string.Empty;
+            HideArchivePasswordError();
+            PopChromeDimOverlay();
+        }
+
+        if (ArchivePasswordPanel.Visibility != Visibility.Visible)
+        {
+            FinishHide();
+            return;
+        }
+
+        UiAnimationHelper.HideOverlay(ArchivePasswordPanel, FinishHide);
+    }
+
+    private void ShowArchivePasswordError(string message)
+    {
+        ArchivePasswordErrorText.Text = message;
+        ArchivePasswordErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void HideArchivePasswordError()
+    {
+        ArchivePasswordErrorText.Text = string.Empty;
+        ArchivePasswordErrorText.Visibility = Visibility.Collapsed;
+    }
+
+    private void ArchivePasswordCancelButton_Click(object sender, RoutedEventArgs e) =>
+        CompleteArchivePasswordPrompt(null);
+
+    private void ArchivePasswordConfirmButton_Click(object sender, RoutedEventArgs e) =>
+        ConfirmArchivePassword();
+
+    private void ArchivePasswordBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ConfirmArchivePassword();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            CompleteArchivePasswordPrompt(null);
+            e.Handled = true;
+        }
+    }
+
+    private void ConfirmArchivePassword()
+    {
+        var loc = LocalizationManager.Instance;
+        if (string.IsNullOrEmpty(ArchivePasswordBox.Password))
+        {
+            ShowArchivePasswordError(loc["UI_ArchivePasswordEmpty"]);
+            return;
+        }
+
+        CompleteArchivePasswordPrompt(ArchivePasswordBox.Password);
+    }
+
+    private void BeginEncryptFolderWorkflow(DirectoryPaneState pane)
+    {
+        if (_isEncrypting || _isExtracting)
+            return;
+
+        var selected = GetSelectedFileEntries(pane.Control.FileListView)
+            .Where(entry => entry.IsDirectory)
+            .ToList();
+
+        if (selected.Count != 1)
+            return;
+
+        _encryptTargetPane = pane;
+        _encryptFolderSourcePath = selected[0].FullPath;
+        ShowEncryptFolderOverlay();
+    }
+
+    private void ShowEncryptFolderOverlay()
+    {
+        if (string.IsNullOrWhiteSpace(_encryptFolderSourcePath))
+            return;
+
+        var loc = LocalizationManager.Instance;
+        var folderName = Path.GetFileName(_encryptFolderSourcePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrEmpty(folderName))
+            folderName = "folder";
+
+        EncryptFolderTitleText.Text = loc["UI_EncryptFolderTitle"];
+        EncryptFolderPathLabel.Text = loc["UI_EncryptFolderSource"];
+        EncryptFolderArchiveNameLabel.Text = loc["UI_EncryptFolderArchiveName"];
+        EncryptFolderMethodLabel.Text = loc["UI_EncryptFolderMethod"];
+        EncryptFolderPasswordLabel.Text = loc["UI_EncryptFolderPassword"];
+        EncryptFolderConfirmPasswordLabel.Text = loc["UI_EncryptFolderConfirmPassword"];
+        EncryptFolderCreateButton.Content = loc["UI_EncryptFolderCreate"];
+        EncryptFolderPathText.Text = _encryptFolderSourcePath;
+        EncryptFolderArchiveNameTextBox.Text = $"{folderName}.zip";
+        EncryptFolderPasswordBox.Password = string.Empty;
+        EncryptFolderConfirmPasswordBox.Password = string.Empty;
+        PopulateEncryptFolderMethodCombo();
+        HideEncryptFolderError();
+
+        EncryptFolderOverlay.Visibility = Visibility.Visible;
+        PushChromeDimOverlay();
+        UiAnimationHelper.ShowOverlay(EncryptFolderPanel);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            EncryptFolderArchiveNameTextBox.Focus();
+            EncryptFolderArchiveNameTextBox.CaretIndex = EncryptFolderArchiveNameTextBox.Text.Length;
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void PopulateEncryptFolderMethodCombo()
+    {
+        var loc = LocalizationManager.Instance;
+        var selected = EncryptFolderMethodComboBox.SelectedItem is ComboItem<FolderZipEncryptionMethod> current
+            ? current.Value
+            : FolderZipEncryptionMethod.Aes256;
+        EncryptFolderMethodComboBox.Items.Clear();
+        EncryptFolderMethodComboBox.Items.Add(new ComboItem<FolderZipEncryptionMethod>(
+            loc["UI_EncryptFolderMethodZipCrypto"],
+            FolderZipEncryptionMethod.ZipCrypto));
+        EncryptFolderMethodComboBox.Items.Add(new ComboItem<FolderZipEncryptionMethod>(
+            loc["UI_EncryptFolderMethodAes256"],
+            FolderZipEncryptionMethod.Aes256));
+        EncryptFolderMethodComboBox.DisplayMemberPath = nameof(ComboItem<FolderZipEncryptionMethod>.Label);
+        EncryptFolderMethodComboBox.SelectedValuePath = nameof(ComboItem<FolderZipEncryptionMethod>.Value);
+        EncryptFolderMethodComboBox.SelectedIndex = selected == FolderZipEncryptionMethod.Aes256 ? 1 : 0;
+    }
+
+    private void HideEncryptFolderOverlay()
+    {
+        if (EncryptFolderOverlay.Visibility != Visibility.Visible)
+            return;
+
+        void FinishHide()
+        {
+            EncryptFolderOverlay.Visibility = Visibility.Collapsed;
+            EncryptFolderPanel.Visibility = Visibility.Visible;
+            _encryptFolderSourcePath = null;
+            _encryptTargetPane = null;
+            HideEncryptFolderError();
+            PopChromeDimOverlay();
+        }
+
+        if (EncryptFolderPanel.Visibility != Visibility.Visible)
+        {
+            FinishHide();
+            return;
+        }
+
+        UiAnimationHelper.HideOverlay(EncryptFolderPanel, FinishHide);
+    }
+
+    private void ShowEncryptFolderError(string message)
+    {
+        EncryptFolderErrorText.Text = message;
+        EncryptFolderErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void HideEncryptFolderError()
+    {
+        EncryptFolderErrorText.Text = string.Empty;
+        EncryptFolderErrorText.Visibility = Visibility.Collapsed;
+    }
+
+    private void EncryptFolderCancelButton_Click(object sender, RoutedEventArgs e) =>
+        HideEncryptFolderOverlay();
+
+    private void EncryptFolderCreateButton_Click(object sender, RoutedEventArgs e) =>
+        _ = CreateEncryptedFolderArchiveAsync();
+
+    private void EncryptFolderConfirmPasswordBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            _ = CreateEncryptedFolderArchiveAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            HideEncryptFolderOverlay();
+            e.Handled = true;
+        }
+    }
+
+    private void EncryptFolderMethodComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+    }
+
+    private async Task CreateEncryptedFolderArchiveAsync()
+    {
+        var loc = LocalizationManager.Instance;
+
+        if (string.IsNullOrWhiteSpace(_encryptFolderSourcePath) || _encryptTargetPane is null)
+            return;
+
+        var password = EncryptFolderPasswordBox.Password;
+        var confirmPassword = EncryptFolderConfirmPasswordBox.Password;
+
+        if (string.IsNullOrEmpty(password))
+        {
+            ShowEncryptFolderError(loc["UI_EncryptFolderEmptyPassword"]);
+            return;
+        }
+
+        if (!string.Equals(password, confirmPassword, StringComparison.Ordinal))
+        {
+            ShowEncryptFolderError(loc["UI_EncryptFolderPasswordMismatch"]);
+            return;
+        }
+
+        var archiveName = EncryptFolderArchiveNameTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(archiveName) ||
+            !archiveName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+            archiveName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            ShowEncryptFolderError(loc["UI_EncryptFolderInvalidName"]);
+            return;
+        }
+
+        var parentDirectory = Path.GetDirectoryName(_encryptFolderSourcePath);
+        if (string.IsNullOrEmpty(parentDirectory))
+        {
+            ShowEncryptFolderError(loc["UI_EncryptFolderFailed"]);
+            return;
+        }
+
+        var destinationZipPath = Path.Combine(parentDirectory, archiveName);
+        if (File.Exists(destinationZipPath))
+        {
+            ShowEncryptFolderError($"A file named \"{archiveName}\" already exists.");
+            return;
+        }
+
+        var method = EncryptFolderMethodComboBox.SelectedItem is ComboItem<FolderZipEncryptionMethod> item
+            ? item.Value
+            : FolderZipEncryptionMethod.Aes256;
+
+        var pane = _encryptTargetPane;
+        var sourcePath = _encryptFolderSourcePath;
+        HideEncryptFolderOverlay();
+        _isEncrypting = true;
+        StatusText.Text = loc["UI_EncryptFolderCreating"];
+
+        try
+        {
+            await _encryptedZipService.CreateFromDirectoryAsync(
+                sourcePath,
+                destinationZipPath,
+                password,
+                method,
+                new Progress<string>(path => StatusText.Text = $"{loc["UI_EncryptFolderCreating"]} {path}"));
+
+            StatusText.Text = string.Format(loc["UI_EncryptFolderSuccess"], archiveName);
+            RefreshDirectoryListing(pane);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = loc["UI_EncryptFolderFailed"];
+            MessageBox.Show(
+                ex.Message,
+                loc["UI_EncryptFolderFailed"],
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            _isEncrypting = false;
+        }
+    }
+
+    private sealed class ComboItem<T>(string label, T value)
+    {
+        public string Label { get; } = label;
+        public T Value { get; } = value;
     }
 
     private void SetExtractingUiState(bool isExtracting)
@@ -3217,6 +3636,18 @@ public partial class MainWindow : Window
         ArchiveFileNameColumn.Header = loc["UI_ColumnFileName"];
         ArchiveOriginalSizeColumn.Header = loc["UI_ColumnOriginalSize"];
         ArchiveCompressedSizeColumn.Header = loc["UI_ColumnCompressedSize"];
+        EncryptFolderTitleText.Text = loc["UI_EncryptFolderTitle"];
+        EncryptFolderPathLabel.Text = loc["UI_EncryptFolderSource"];
+        EncryptFolderArchiveNameLabel.Text = loc["UI_EncryptFolderArchiveName"];
+        EncryptFolderMethodLabel.Text = loc["UI_EncryptFolderMethod"];
+        EncryptFolderPasswordLabel.Text = loc["UI_EncryptFolderPassword"];
+        EncryptFolderConfirmPasswordLabel.Text = loc["UI_EncryptFolderConfirmPassword"];
+        EncryptFolderCreateButton.Content = loc["UI_EncryptFolderCreate"];
+        ArchivePasswordTitleText.Text = loc["UI_ArchivePasswordTitle"];
+        ArchivePasswordHintText.Text = loc["UI_ArchivePasswordHint"];
+        ArchivePasswordConfirmButton.Content = loc["UI_ArchivePasswordUnlock"];
+        if (EncryptFolderOverlay.Visibility == Visibility.Visible)
+            PopulateEncryptFolderMethodCombo();
 
         foreach (var pane in _panes)
             pane.Control.ApplyLocalization();
@@ -3516,6 +3947,7 @@ public partial class MainWindow : Window
     {
         _terminalAnimationInProgress = true;
         TerminalToggleButton.IsEnabled = false;
+        PowerShellTerminal.BeginStop();
 
         var panelHeight = TerminalPanelRow.ActualHeight > 0
             ? TerminalPanelRow.ActualHeight
@@ -3530,7 +3962,7 @@ public partial class MainWindow : Window
         var stepComplete = UiAnimationHelper.CreateParallelCallback(2, () =>
         {
             SettingsManager.Instance.UpdateTerminalPreferences(panelHeight, isOpen: false);
-            FinishHideTerminal(animate: false);
+            FinishHideTerminal(animate: false, waitForProcessStop: false);
             _terminalAnimationInProgress = false;
             TerminalToggleButton.IsEnabled = true;
         });
@@ -3543,9 +3975,11 @@ public partial class MainWindow : Window
             stepComplete);
     }
 
-    private void FinishHideTerminal(bool animate)
+    private void FinishHideTerminal(bool animate, bool waitForProcessStop = false)
     {
-        PowerShellTerminal.Stop();
+        if (waitForProcessStop)
+            PowerShellTerminal.Stop();
+
         TerminalSplitter.Visibility = Visibility.Collapsed;
         TerminalSplitter.Opacity = 1;
         PowerShellTerminal.Visibility = Visibility.Collapsed;

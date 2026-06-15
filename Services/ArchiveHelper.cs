@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 
 namespace FileExplorer.Services;
 
@@ -19,4 +20,21 @@ public static class ArchiveHelper
 
     public static string GetExtractionFolderName(string archivePath) =>
         Path.GetFileNameWithoutExtension(archivePath);
+
+    public static bool IsPasswordRelatedError(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            var message = current.Message;
+            if (message.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("encrypted", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("decrypt", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("crc", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return ex is InvalidOperationException or CryptographicException;
+    }
 }
