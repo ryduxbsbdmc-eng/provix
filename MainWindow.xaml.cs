@@ -69,6 +69,11 @@ public partial class MainWindow : Window
     private DirectoryPaneState? _aiTargetPane;
     private List<AiCommand> _aiPendingCommands = [];
     private bool _isTerminalVisible;
+    private bool _terminalAnimationInProgress;
+
+    private const double TerminalDefaultHeight = 220;
+    private const double TerminalSplitterHeight = 6;
+    private const double TerminalMinHeight = 120;
 
     public MainWindow()
     {
@@ -81,8 +86,11 @@ public partial class MainWindow : Window
         Closing += MainWindow_Closing;
     }
 
-    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e) =>
-        PowerShellTerminal.Stop();
+    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        _terminalAnimationInProgress = false;
+        FinishHideTerminal(animate: false);
+    }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -732,7 +740,10 @@ public partial class MainWindow : Window
         pane.Control.FileListView.ItemsSource = contents;
 
         if (pane == _activePane)
+        {
             StatusText.Text = $"{contents.Count} item(s)";
+            pane.Control.PlayListRefreshAnimation();
+        }
 
         await ApplyGitMetadataAsync(pane, contents, refreshVersion);
     }
@@ -861,6 +872,7 @@ public partial class MainWindow : Window
 
             if (pane == _activePane)
             {
+                pane.Control.PlayListRefreshAnimation();
                 var truncated = finalResults.Count >= 2_500;
                 StatusText.Text = truncated
                     ? $"Found {finalResults.Count}+ matches for \"{query}\" (limit reached)"
@@ -910,7 +922,17 @@ public partial class MainWindow : Window
 
     private void SetSearchUiState(bool isSearching)
     {
-        SearchingIndicator.Visibility = isSearching ? Visibility.Visible : Visibility.Collapsed;
+        if (isSearching)
+        {
+            SearchingIndicator.Visibility = Visibility.Visible;
+            UiAnimationHelper.StartPulse(SearchingIndicator);
+        }
+        else
+        {
+            UiAnimationHelper.StopPulse(SearchingIndicator);
+            SearchingIndicator.Visibility = Visibility.Collapsed;
+        }
+
         Cursor = isSearching ? Cursors.Wait : Cursors.Arrow;
     }
 
@@ -1872,7 +1894,18 @@ public partial class MainWindow : Window
     private void SetExtractingUiState(bool isExtracting)
     {
         _isExtracting = isExtracting;
-        ExtractingIndicator.Visibility = isExtracting ? Visibility.Visible : Visibility.Collapsed;
+
+        if (isExtracting)
+        {
+            ExtractingIndicator.Visibility = Visibility.Visible;
+            UiAnimationHelper.StartPulse(ExtractingIndicator);
+        }
+        else
+        {
+            UiAnimationHelper.StopPulse(ExtractingIndicator);
+            ExtractingIndicator.Visibility = Visibility.Collapsed;
+        }
+
         Cursor = isExtracting ? Cursors.Wait : Cursors.Arrow;
         ArchiveExtractButton.IsEnabled = !isExtracting && _isArchiveViewerOpen;
 
@@ -2076,6 +2109,7 @@ public partial class MainWindow : Window
         HideNamePromptError();
         PushChromeDimOverlay();
         NamePromptOverlay.Visibility = Visibility.Visible;
+        UiAnimationHelper.ShowOverlay(NamePromptPanel);
 
         Dispatcher.BeginInvoke(() =>
         {
@@ -2085,19 +2119,32 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Input);
     }
 
-    private void HideNamePrompt()
+    private void HideNamePrompt(bool animate = true)
     {
         if (NamePromptOverlay.Visibility != Visibility.Visible)
             return;
 
-        NamePromptOverlay.Visibility = Visibility.Collapsed;
-        NamePromptTextBox.Clear();
-        GitCommitFilesList.ItemsSource = null;
-        GitCommitFilesList.Visibility = Visibility.Collapsed;
-        _namePromptTargetPane = null;
-        _namePromptGitTargetDirectory = null;
-        HideNamePromptError();
-        PopChromeDimOverlay();
+        void CompleteHide()
+        {
+            NamePromptOverlay.Visibility = Visibility.Collapsed;
+            NamePromptPanel.Visibility = Visibility.Visible;
+            NamePromptTextBox.Clear();
+            GitCommitFilesList.ItemsSource = null;
+            GitCommitFilesList.Visibility = Visibility.Collapsed;
+            _namePromptTargetPane = null;
+            _namePromptGitTargetDirectory = null;
+            HideNamePromptError();
+            PopChromeDimOverlay();
+        }
+
+        if (!animate)
+        {
+            CompleteHide();
+            return;
+        }
+
+        NamePromptPanel.Visibility = Visibility.Visible;
+        UiAnimationHelper.HideOverlay(NamePromptPanel, CompleteHide);
     }
 
     private void ShowNamePromptError(string message)
@@ -3159,41 +3206,108 @@ public partial class MainWindow : Window
 
     private void ToggleTerminalPanel()
     {
-        _isTerminalVisible = !_isTerminalVisible;
+        if (_terminalAnimationInProgress)
+            return;
 
         if (_isTerminalVisible)
         {
-            TerminalSplitter.Visibility = Visibility.Visible;
-            PowerShellTerminal.Visibility = Visibility.Visible;
-            TerminalSplitterRow.Height = new GridLength(6);
-            TerminalSplitterRow.MinHeight = 6;
-            TerminalPanelRow.Height = new GridLength(220);
-            TerminalPanelRow.MinHeight = 120;
-
-            var path = ActivePane.CurrentPath;
-            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
-            {
-                path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            }
-
-            if (!PowerShellTerminal.IsRunning)
-                PowerShellTerminal.StartSession(path);
-            else
-                PowerShellTerminal.SyncWorkingDirectory(path);
-
-            PowerShellTerminal.FocusInput();
+            HideTerminalWithAnimation();
             return;
         }
 
-        PowerShellTerminal.Stop();
-        TerminalSplitter.Visibility = Visibility.Collapsed;
-        PowerShellTerminal.Visibility = Visibility.Collapsed;
+        ShowTerminalWithAnimation();
+    }
+
+    private void ShowTerminalWithAnimation()
+    {
+        _terminalAnimationInProgress = true;
+        TerminalToggleButton.IsEnabled = false;
+        _isTerminalVisible = true;
+
+        TerminalSplitter.Visibility = Visibility.Visible;
+        TerminalSplitter.Opacity = 1;
+        PowerShellTerminal.Visibility = Visibility.Visible;
+
         TerminalSplitterRow.Height = new GridLength(0);
         TerminalSplitterRow.MinHeight = 0;
         TerminalPanelRow.Height = new GridLength(0);
         TerminalPanelRow.MinHeight = 0;
 
-        MainChromeHost.UpdateLayout();
+        var path = ActivePane.CurrentPath;
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        if (!PowerShellTerminal.IsRunning)
+            PowerShellTerminal.StartSession(path);
+        else
+            PowerShellTerminal.SyncWorkingDirectory(path);
+
+        var stepComplete = UiAnimationHelper.CreateParallelCallback(2, () =>
+        {
+            TerminalPanelRow.MinHeight = TerminalMinHeight;
+            TerminalPanelRow.Height = new GridLength(TerminalDefaultHeight);
+            TerminalSplitterRow.MinHeight = TerminalSplitterHeight;
+            TerminalSplitterRow.Height = new GridLength(TerminalSplitterHeight);
+            _terminalAnimationInProgress = false;
+            TerminalToggleButton.IsEnabled = true;
+            PowerShellTerminal.FocusInput();
+        });
+
+        UiAnimationHelper.AnimateTerminalEntrance(PowerShellTerminal, stepComplete);
+        UiAnimationHelper.AnimateTerminalLayout(
+            TerminalSplitterRow, 0, TerminalSplitterHeight,
+            TerminalPanelRow, 0, TerminalDefaultHeight,
+            fadeIn: true,
+            stepComplete);
+    }
+
+    private void HideTerminalWithAnimation()
+    {
+        _terminalAnimationInProgress = true;
+        TerminalToggleButton.IsEnabled = false;
+
+        var panelHeight = TerminalPanelRow.ActualHeight > 0
+            ? TerminalPanelRow.ActualHeight
+            : TerminalDefaultHeight;
+        var splitterHeight = TerminalSplitterRow.ActualHeight > 0
+            ? TerminalSplitterRow.ActualHeight
+            : TerminalSplitterHeight;
+
+        TerminalPanelRow.MinHeight = 0;
+        TerminalSplitterRow.MinHeight = 0;
+
+        var stepComplete = UiAnimationHelper.CreateParallelCallback(2, () =>
+        {
+            FinishHideTerminal(animate: false);
+            _terminalAnimationInProgress = false;
+            TerminalToggleButton.IsEnabled = true;
+        });
+
+        UiAnimationHelper.AnimateTerminalExit(PowerShellTerminal, stepComplete);
+        UiAnimationHelper.AnimateTerminalLayout(
+            TerminalSplitterRow, splitterHeight, 0,
+            TerminalPanelRow, panelHeight, 0,
+            fadeIn: false,
+            stepComplete);
+    }
+
+    private void FinishHideTerminal(bool animate)
+    {
+        PowerShellTerminal.Stop();
+        TerminalSplitter.Visibility = Visibility.Collapsed;
+        TerminalSplitter.Opacity = 1;
+        PowerShellTerminal.Visibility = Visibility.Collapsed;
+        PowerShellTerminal.ClearValue(UIElement.OpacityProperty);
+        TerminalSplitterRow.Height = new GridLength(0);
+        TerminalSplitterRow.MinHeight = 0;
+        TerminalPanelRow.Height = new GridLength(0);
+        TerminalPanelRow.MinHeight = 0;
+        _isTerminalVisible = false;
+
+        if (!animate)
+            MainChromeHost.UpdateLayout();
+        else
+            Dispatcher.BeginInvoke(MainChromeHost.UpdateLayout);
     }
 
     private void PowerShellTerminal_CloseRequested(object? sender, EventArgs e)
