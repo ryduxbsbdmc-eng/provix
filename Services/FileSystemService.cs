@@ -92,11 +92,10 @@ public sealed class FileSystemService
 
     public IReadOnlyList<FileSystemEntry> GetDirectoryContents(string path)
     {
-        var sharedFolderIcon = _iconService.GetSharedFolderIcon();
         var entries = new List<FileSystemEntry>(256);
 
         foreach (var directory in Directory.EnumerateDirectories(path, "*", BrowseEnumerationOptions))
-            entries.Add(CreateDirectoryEntryFromPath(directory, sharedFolderIcon));
+            entries.Add(CreateDirectoryEntryFromPath(directory));
 
         foreach (var file in Directory.EnumerateFiles(path, "*", BrowseEnumerationOptions))
             entries.Add(CreateFileEntryFromPath(file));
@@ -139,7 +138,6 @@ public sealed class FileSystemService
         var pendingDirectories = new Queue<(string Path, int Depth)>();
         pendingDirectories.Enqueue((rootPath, 0));
 
-        var sharedFolderIcon = _iconService.GetSharedFolderIcon();
         var stopwatch = Stopwatch.StartNew();
         var lastStatusReportMs = 0L;
         var scannedDirectories = 0;
@@ -176,7 +174,7 @@ public sealed class FileSystemService
                 if (directoryName.Length > 0 &&
                     directoryName.Contains(query, StringComparison.OrdinalIgnoreCase))
                 {
-                    results.Add(CreateSearchDirectoryEntry(directory, directoryName, sharedFolderIcon));
+                    results.Add(CreateSearchDirectoryEntry(directory, directoryName));
                     if (results.Count >= MaxSearchResults)
                     {
                         isTruncated = true;
@@ -242,7 +240,7 @@ public sealed class FileSystemService
     private static bool ShouldSkipSearchDirectory(string directoryName) =>
         SkippedSearchDirectoryNames.Contains(directoryName);
 
-    private FileSystemEntry CreateSearchDirectoryEntry(string fullPath, string name, ImageSource folderIcon) =>
+    private FileSystemEntry CreateSearchDirectoryEntry(string fullPath, string name) =>
         new()
         {
             Name = name,
@@ -250,7 +248,7 @@ public sealed class FileSystemService
             IsDirectory = true,
             DateModified = default,
             Type = "File folder",
-            Icon = folderIcon
+            Icon = _iconService.GetFolderIcon(fullPath)
         };
 
     private FileSystemEntry CreateSearchFileEntry(string fullPath, string name)
@@ -307,7 +305,7 @@ public sealed class FileSystemService
         }
     }
 
-    private FileSystemEntry CreateDirectoryEntryFromPath(string fullPath, ImageSource sharedFolderIcon)
+    private FileSystemEntry CreateDirectoryEntryFromPath(string fullPath)
     {
         var name = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         DateTime modified = default;
@@ -328,7 +326,7 @@ public sealed class FileSystemService
             IsDirectory = true,
             DateModified = modified,
             Type = "File folder",
-            Icon = sharedFolderIcon
+            Icon = _iconService.GetFolderIcon(fullPath)
         };
     }
 
@@ -361,7 +359,7 @@ public sealed class FileSystemService
                 ? extension.TrimStart('.').ToUpperInvariant() + " File"
                 : "File",
             Size = size,
-            Icon = _iconService.GetFileIconByExtension(extension, fullPath)
+            Icon = _iconService.GetFileIcon(fullPath)
         };
     }
 
@@ -373,7 +371,7 @@ public sealed class FileSystemService
             FullPath = fullPath,
             Icon = isDrive
                 ? _iconService.GetDriveIcon(fullPath)
-                : _iconService.GetSharedFolderIcon()
+                : _iconService.GetFolderIcon(fullPath)
         };
 
         node.Children.Add(CreateDummyChild());

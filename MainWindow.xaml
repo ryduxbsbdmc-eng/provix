@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:FileExplorer.Controls"
         xmlns:loc="clr-namespace:FileExplorer.Markup"
+        xmlns:helpers="clr-namespace:FileExplorer.Helpers"
         x:Name="RootWindow"
         Title="provix"
         Width="1100"
@@ -197,6 +198,7 @@
         </Style>
 
         <Style x:Key="EditorTextBoxStyle" TargetType="TextBox">
+            <Setter Property="helpers:SmoothScrollHelper.IsEnabled" Value="True" />
             <Setter Property="Background" Value="{DynamicResource EditorBackgroundBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
@@ -493,7 +495,12 @@
                                    FontSize="14"
                                    Foreground="{DynamicResource AccentBrush}"
                                    VerticalAlignment="Center"
-                                   Margin="0,0,8,0" />
+                                   Margin="0,0,8,0"
+                                   RenderTransformOrigin="0.5,0.5">
+                            <TextBlock.RenderTransform>
+                                <RotateTransform Angle="-90" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
                         <TextBlock x:Name="AppTitleText"
                                    Text="{loc:Loc UI_AppTitle}"
                                    Foreground="{DynamicResource TextPrimaryBrush}"
@@ -626,6 +633,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
@@ -646,8 +654,113 @@
                                     IsEnabled="False"
                                     Click="ForwardNavigationButton_Click" />
 
+                            <Button x:Name="HistoryNavigationButton"
+                                    Grid.Column="2"
+                                    Style="{StaticResource NavButtonStyle}"
+                                    Content="&#xE81C;"
+                                    ToolTip="History"
+                                    Click="HistoryNavigationButton_Click" />
+
+                            <Popup x:Name="HistoryPopup"
+                                   PlacementTarget="{Binding ElementName=HistoryNavigationButton}"
+                                   Placement="Bottom"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Fade">
+                                <Border Background="{DynamicResource AppPopupBackground}"
+                                        BorderBrush="{DynamicResource AppPopupBorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Width="420"
+                                        MaxHeight="400"
+                                        Padding="8"
+                                        SnapsToDevicePixels="True">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" MinHeight="120" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock x:Name="HistoryTitleText"
+                                                   Text="Recent locations"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Margin="4,2,4,8" />
+
+                                        <ListBox x:Name="HistoryListBox"
+                                                 Grid.Row="1"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 MouseLeftButtonUp="HistoryListBox_MouseLeftButtonUp">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Image Source="{Binding Icon}"
+                                                               Width="16"
+                                                               Height="16"
+                                                               Margin="0,0,10,0"
+                                                               VerticalAlignment="Top" />
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                       FontSize="12"
+                                                                       FontWeight="SemiBold"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding Path}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       FontSize="10"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="0,2,0,0" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2"
+                                                                    HorizontalAlignment="Right"
+                                                                    Margin="8,0,0,0">
+                                                            <TextBlock Text="{Binding KindLabel}"
+                                                                       Foreground="{DynamicResource AccentBrush}"
+                                                                       FontSize="10"
+                                                                       HorizontalAlignment="Right" />
+                                                            <TextBlock Text="{Binding VisitedAtDisplay}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       FontSize="10"
+                                                                       HorizontalAlignment="Right"
+                                                                       Margin="0,2,0,0" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+
+                                        <TextBlock x:Name="HistoryEmptyText"
+                                                   Grid.Row="1"
+                                                   Text="No recent folders or files yet."
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="12"
+                                                   TextAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Margin="12"
+                                                   Visibility="Collapsed" />
+
+                                        <Button x:Name="HistoryClearButton"
+                                                Grid.Row="2"
+                                                Style="{StaticResource DialogActionButtonStyle}"
+                                                Content="Clear history"
+                                                HorizontalAlignment="Right"
+                                                Margin="0,8,0,0"
+                                                Click="HistoryClearButton_Click" />
+                                    </Grid>
+                                </Border>
+                            </Popup>
+
                             <TextBlock x:Name="SearchingIndicator"
-                                       Grid.Column="3"
+                                       Grid.Column="4"
                                        Text="Searching..."
                                        Foreground="{DynamicResource AccentBrush}"
                                        FontSize="11"
@@ -657,7 +770,7 @@
                                        Visibility="Collapsed" />
 
                             <TextBlock x:Name="ExtractingIndicator"
-                                       Grid.Column="3"
+                                       Grid.Column="4"
                                        Text="Extracting..."
                                        Foreground="{DynamicResource AccentBrush}"
                                        FontSize="11"
@@ -1166,7 +1279,8 @@
                             UseLayoutRounding="True"
                             MouseLeftButtonDown="SettingsPanel_MouseLeftButtonDown">
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled">
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      helpers:SmoothScrollHelper.IsEnabled="True">
                         <StackPanel Background="Transparent">
                             <TextBlock x:Name="SettingsTitleText"
                                        Text="{loc:Loc UI_SettingsTitle}"
@@ -1207,6 +1321,75 @@
                                       Background="{DynamicResource OpaqueInputBackgroundBrush}"
                                       DisplayMemberPath="DisplayName"
                                       SelectionChanged="SettingsLanguageComboBox_SelectionChanged" />
+
+                            <TextBlock x:Name="SettingsScrollSensitivityLabel"
+                                       Text="{loc:Loc UI_ScrollSensitivity}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <Border Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushDark}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="12,10"
+                                    Margin="0,0,0,4"
+                                    SnapsToDevicePixels="True">
+                                <StackPanel Background="Transparent">
+                                    <Grid Margin="0,0,0,10">
+                                        <TextBlock x:Name="SettingsScrollSensitivityLiveLabel"
+                                                   Text="{loc:Loc UI_ScrollSensitivityLive}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center" />
+                                        <Border HorizontalAlignment="Right"
+                                                Background="{DynamicResource SelectionFillBrush}"
+                                                BorderBrush="{DynamicResource SelectionBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="8,3"
+                                                SnapsToDevicePixels="True">
+                                            <TextBlock x:Name="SettingsScrollSensitivityValueText"
+                                                       Text="100%"
+                                                       Foreground="{DynamicResource SelectionForegroundBrush}"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold" />
+                                        </Border>
+                                    </Grid>
+
+                                    <Slider x:Name="SettingsScrollSensitivitySlider"
+                                            Style="{StaticResource ExplorerSliderStyle}"
+                                            Minimum="0.25"
+                                            Maximum="3"
+                                            Value="1"
+                                            SmallChange="0.01"
+                                            LargeChange="0.1"
+                                            ValueChanged="SettingsScrollSensitivitySlider_ValueChanged"
+                                            PreviewMouseWheel="SettingsScrollSensitivitySlider_PreviewMouseWheel" />
+
+                                    <Grid Margin="0,8,0,0">
+                                        <TextBlock x:Name="SettingsScrollSensitivitySlowText"
+                                                   Text="{loc:Loc UI_ScrollSensitivitySlow}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="10"
+                                                   HorizontalAlignment="Left" />
+                                        <TextBlock x:Name="SettingsScrollSensitivityDefaultText"
+                                                   Text="{loc:Loc UI_ScrollSensitivityDefault}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="10"
+                                                   HorizontalAlignment="Center" />
+                                        <TextBlock x:Name="SettingsScrollSensitivityFastText"
+                                                   Text="{loc:Loc UI_ScrollSensitivityFast}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="10"
+                                                   HorizontalAlignment="Right" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="SettingsScrollSensitivityHint"
+                                       Text="{loc:Loc UI_ScrollSensitivityHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       Margin="0,0,0,14" />
 
                             <TextBlock x:Name="SettingsAiApiKeyLabel"
                                        Text="{loc:Loc UI_AiOpenRouterApiKey}"
