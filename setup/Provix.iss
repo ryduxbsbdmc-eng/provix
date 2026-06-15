@@ -2,7 +2,7 @@
 ; Build: build-setup.cmd
 
 #define MyAppName "Provix"
-#define MyAppVersion "1.1.3"
+#define MyAppVersion "1.2.4"
 #define MyAppPublisher "Provix"
 #define MyAppExeName "FileExplorer.exe"
 #define MyAppSourceDir "..\publish"
