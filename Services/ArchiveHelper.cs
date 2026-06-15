@@ -4,6 +4,8 @@ namespace FileExplorer.Services;
 
 public static class ArchiveHelper
 {
+    public const long MaxInAppPreviewBytes = 256L * 1024 * 1024;
+
     private static readonly HashSet<string> ArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".zip", ".rar", ".7z"

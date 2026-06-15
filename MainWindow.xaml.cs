@@ -395,7 +395,7 @@ public partial class MainWindow : Window
         NavigateToDirectory(ActivePane, node.FullPath, syncTree: false);
     }
 
-    private void DirectoryTreeItem_Expanded(object sender, RoutedEventArgs e)
+    private async void DirectoryTreeItem_Expanded(object sender, RoutedEventArgs e)
     {
         if (e.OriginalSource is not TreeViewItem { DataContext: DirectoryTreeNode node })
             return;
@@ -403,7 +403,19 @@ public partial class MainWindow : Window
         if (!node.HasDummyChild)
             return;
 
-        _fileSystemService.LoadChildDirectories(node);
+        node.IsLoading = true;
+
+        try
+        {
+            var childNodes = await Task.Run(() => _fileSystemService.GetChildDirectoryNodes(node.FullPath));
+            node.Children.Clear();
+            foreach (var child in childNodes)
+                node.Children.Add(child);
+        }
+        finally
+        {
+            node.IsLoading = false;
+        }
     }
 
     private void DirectoryTree_DragOver(object sender, DragEventArgs e)
@@ -580,6 +592,13 @@ public partial class MainWindow : Window
 
         if (TextFileHelper.IsEditableTextFile(entry.FullPath))
         {
+            if (!TextFileHelper.IsWithinEditorSizeLimit(entry.FullPath, out var fileSize))
+            {
+                OpenFileWithDefaultApplication(entry.FullPath);
+                StatusText.Text = $"Opened with default app ({TextFileHelper.FormatByteSize(fileSize)} exceeds built-in editor limit).";
+                return;
+            }
+
             await OpenFileInEditorAsync(entry.FullPath);
             return;
         }
@@ -686,42 +705,84 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(pane.CurrentPath))
             return;
 
+        var path = pane.CurrentPath;
+        pane.ListingRefreshVersion++;
+        var refreshVersion = pane.ListingRefreshVersion;
+
         ClearPaneFileListSelection(pane);
 
-        var contents = _fileSystemService.GetDirectoryContents(pane.CurrentPath);
+        IReadOnlyList<FileSystemEntry> contents;
+        try
+        {
+            contents = await _fileSystemService.GetDirectoryContentsAsync(path);
+        }
+        catch (Exception ex)
+        {
+            if (pane == _activePane)
+                StatusText.Text = $"Error: {ex.Message}";
+            return;
+        }
+
+        if (refreshVersion != pane.ListingRefreshVersion ||
+            !string.Equals(pane.CurrentPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         pane.Control.FileListView.ItemsSource = contents;
 
         if (pane == _activePane)
             StatusText.Text = $"{contents.Count} item(s)";
 
-        await RefreshGitStatusAsync(pane);
-        await EnrichEntriesWithGitStatusAsync(pane, contents);
+        await ApplyGitMetadataAsync(pane, contents, refreshVersion);
     }
 
-    private async Task EnrichEntriesWithGitStatusAsync(DirectoryPaneState pane, IReadOnlyList<FileSystemEntry> entries)
+    private async Task ApplyGitMetadataAsync(
+        DirectoryPaneState pane,
+        IReadOnlyList<FileSystemEntry> entries,
+        int refreshVersion)
     {
-        if (entries.Count == 0) return;
+        if (string.IsNullOrEmpty(pane.CurrentPath))
+        {
+            pane.Control.UpdateGitStatus(false, string.Empty, 0);
+            return;
+        }
 
         var repoRoot = GitRepositoryHelper.GetGitRepositoryRoot(pane.CurrentPath);
-        if (repoRoot is null) return;
+        if (repoRoot is null)
+        {
+            pane.Control.UpdateGitStatus(false, string.Empty, 0);
+            return;
+        }
 
         var status = await GitService.GetWorkingTreeStatusAsync(repoRoot);
-        if (!status.Success || status.Changes.Count == 0) return;
+        if (refreshVersion != pane.ListingRefreshVersion)
+            return;
 
-        var repoRootNormalized = Path.GetFullPath(repoRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        
-        // Optimization: Pre-process changes for faster lookup
+        if (!status.Success)
+        {
+            pane.Control.UpdateGitStatus(false, string.Empty, 0);
+            return;
+        }
+
+        pane.Control.UpdateGitStatus(true, status.BranchName, status.ChangedFileCount);
+
+        if (entries.Count == 0 || status.Changes.Count == 0)
+            return;
+
+        var repoRootNormalized = Path.GetFullPath(repoRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
         var fileChanges = new Dictionary<string, GitFileStatusType>(StringComparer.OrdinalIgnoreCase);
         var modifiedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var change in status.Changes)
         {
             fileChanges[change.FilePath] = change.Status;
-            
-            // Mark all parent directories as modified
+
             var parts = change.FilePath.Split('/');
-            var currentPath = "";
-            for (int i = 0; i < parts.Length - 1; i++)
+            var currentPath = string.Empty;
+            for (var i = 0; i < parts.Length - 1; i++)
             {
                 currentPath = i == 0 ? parts[i] : $"{currentPath}/{parts[i]}";
                 modifiedDirectories.Add(currentPath);
@@ -731,7 +792,7 @@ public partial class MainWindow : Window
         foreach (var entry in entries)
         {
             var relativePath = Path.GetRelativePath(repoRootNormalized, entry.FullPath).Replace('\\', '/');
-            
+
             if (entry.IsDirectory)
             {
                 if (modifiedDirectories.Contains(relativePath))
@@ -743,29 +804,8 @@ public partial class MainWindow : Window
             }
         }
 
-        pane.Control.FileListView.Items.Refresh();
-    }
-
-    private async Task RefreshGitStatusAsync(DirectoryPaneState pane)
-    {
-        if (string.IsNullOrEmpty(pane.CurrentPath))
-        {
-            pane.Control.UpdateGitStatus(false, string.Empty, 0);
-            return;
-        }
-
-        var isRepo = await GitService.IsGitRepositoryAsync(pane.CurrentPath);
-        if (!isRepo)
-        {
-            pane.Control.UpdateGitStatus(false, string.Empty, 0);
-            return;
-        }
-
-        var status = await GitService.GetWorkingTreeStatusAsync(pane.CurrentPath);
-        if (status.Success)
-        {
-            pane.Control.UpdateGitStatus(true, status.BranchName, status.ChangedFileCount);
-        }
+        if (refreshVersion == pane.ListingRefreshVersion)
+            pane.Control.FileListView.Items.Refresh();
     }
 
     private static void ClearPaneFileListSelection(DirectoryPaneState pane)
@@ -885,6 +925,13 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (!TextFileHelper.IsWithinEditorSizeLimit(filePath, out var fileSize))
+            {
+                OpenFileWithDefaultApplication(filePath);
+                StatusText.Text = $"Opened with default app ({TextFileHelper.FormatByteSize(fileSize)} exceeds built-in editor limit).";
+                return;
+            }
+
             PushChromeDimOverlay();
             UiAnimationHelper.ShowOverlay(EditorOverlay);
             EditorTextBox.IsEnabled = false;
@@ -892,7 +939,7 @@ public partial class MainWindow : Window
             EditorFileNameText.Text = Path.GetFileName(filePath);
             StatusText.Text = $"Loading {Path.GetFileName(filePath)}...";
 
-            var content = await File.ReadAllTextAsync(filePath);
+            var content = await TextFileHelper.ReadTextForEditorAsync(filePath);
 
             _editorFilePath = filePath;
             _editorOriginalContent = content;
@@ -1275,7 +1322,7 @@ public partial class MainWindow : Window
                 if (result.Success)
                 {
                     StatusText.Text = string.Format(loc["UI_GitBranchSwitched"], branch.Name);
-                    await RefreshGitStatusAsync(pane);
+                    RefreshDirectoryListing(pane);
                 }
                 else
                 {
@@ -1689,6 +1736,18 @@ public partial class MainWindow : Window
     }
     private async Task OpenArchiveViewerAsync(string archivePath)
     {
+        if (TextFileHelper.TryGetFileSize(archivePath, out var archiveSize) &&
+            archiveSize > ArchiveHelper.MaxInAppPreviewBytes)
+        {
+            MessageBox.Show(
+                $"This archive is {TextFileHelper.FormatByteSize(archiveSize)}. " +
+                $"Built-in preview supports archives up to {TextFileHelper.FormatByteSize(ArchiveHelper.MaxInAppPreviewBytes)}.",
+                "Archive Too Large",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
         CloseEditor(animate: false);
         CloseArchiveViewer(animate: false);
 
@@ -2099,7 +2158,7 @@ public partial class MainWindow : Window
         {
             HideNamePrompt();
             StatusText.Text = string.Format(loc["UI_GitBranchCreated"], branchName);
-            await RefreshGitStatusAsync(pane);
+            RefreshDirectoryListing(pane);
         }
         else
         {

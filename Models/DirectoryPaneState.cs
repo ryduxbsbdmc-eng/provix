@@ -13,4 +13,5 @@ public sealed class DirectoryPaneState
     public CancellationTokenSource? DebounceCancellation { get; set; }
     public ObservableCollection<FileSystemEntry>? LiveSearchResults { get; set; }
     public bool SuppressPathSearchBoxUpdate { get; set; }
+    public int ListingRefreshVersion { get; set; }
 }

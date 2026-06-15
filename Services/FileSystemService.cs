@@ -78,8 +78,8 @@ public sealed class FileSystemService
         {
             parent.Children.Clear();
 
-            foreach (var directory in Directory.EnumerateDirectories(parent.FullPath, "*", BrowseEnumerationOptions))
-                parent.Children.Add(CreateDirectoryNode(directory, Path.GetFileName(directory)));
+            foreach (var child in GetChildDirectoryNodes(parent.FullPath))
+                parent.Children.Add(child);
         }
         finally
         {
@@ -87,17 +87,31 @@ public sealed class FileSystemService
         }
     }
 
+    public Task<IReadOnlyList<FileSystemEntry>> GetDirectoryContentsAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.Run(() => GetDirectoryContents(path), cancellationToken);
+
     public IReadOnlyList<FileSystemEntry> GetDirectoryContents(string path)
     {
-        var entries = new List<FileSystemEntry>();
+        var sharedFolderIcon = _iconService.GetSharedFolderIcon();
+        var entries = new List<FileSystemEntry>(256);
 
         foreach (var directory in Directory.EnumerateDirectories(path, "*", BrowseEnumerationOptions))
-            entries.Add(CreateDirectoryEntry(new DirectoryInfo(directory)));
+            entries.Add(CreateDirectoryEntryFromPath(directory, sharedFolderIcon));
 
         foreach (var file in Directory.EnumerateFiles(path, "*", BrowseEnumerationOptions))
-            entries.Add(CreateFileEntry(new FileInfo(file)));
+            entries.Add(CreateFileEntryFromPath(file));
 
         return SortEntries(entries);
+    }
+
+    public IReadOnlyList<DirectoryTreeNode> GetChildDirectoryNodes(string parentPath)
+    {
+        var nodes = new List<DirectoryTreeNode>();
+
+        foreach (var directory in Directory.EnumerateDirectories(parentPath, "*", BrowseEnumerationOptions))
+            nodes.Add(CreateDirectoryNode(directory, Path.GetFileName(directory)));
+
+        return nodes;
     }
 
     public async Task<IReadOnlyList<FileSystemEntry>> SearchAsync(
@@ -293,30 +307,63 @@ public sealed class FileSystemService
         }
     }
 
-    private FileSystemEntry CreateDirectoryEntry(DirectoryInfo info) =>
-        new()
-        {
-            Name = info.Name,
-            FullPath = info.FullName,
-            IsDirectory = true,
-            DateModified = info.LastWriteTime,
-            Type = "File folder",
-            Icon = _iconService.GetFolderIcon(info.FullName)
-        };
+    private FileSystemEntry CreateDirectoryEntryFromPath(string fullPath, ImageSource sharedFolderIcon)
+    {
+        var name = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        DateTime modified = default;
 
-    private FileSystemEntry CreateFileEntry(FileInfo info) =>
-        new()
+        try
         {
-            Name = info.Name,
-            FullPath = info.FullName,
-            IsDirectory = false,
-            DateModified = info.LastWriteTime,
-            Type = info.Extension.Length > 0
-                ? info.Extension.TrimStart('.').ToUpperInvariant() + " File"
-                : "File",
-            Size = info.Length,
-            Icon = _iconService.GetFileIcon(info.FullName)
+            modified = Directory.GetLastWriteTime(fullPath);
+        }
+        catch
+        {
+            // Leave default timestamp when metadata is unavailable.
+        }
+
+        return new FileSystemEntry
+        {
+            Name = name,
+            FullPath = fullPath,
+            IsDirectory = true,
+            DateModified = modified,
+            Type = "File folder",
+            Icon = sharedFolderIcon
         };
+    }
+
+    private FileSystemEntry CreateFileEntryFromPath(string fullPath)
+    {
+        var name = Path.GetFileName(fullPath);
+        var extension = Path.GetExtension(fullPath);
+        long size = 0;
+        DateTime modified = default;
+
+        try
+        {
+            var info = new FileInfo(fullPath);
+            size = info.Length;
+            modified = info.LastWriteTime;
+            extension = info.Extension;
+        }
+        catch
+        {
+            // Fall back to path-based metadata.
+        }
+
+        return new FileSystemEntry
+        {
+            Name = name,
+            FullPath = fullPath,
+            IsDirectory = false,
+            DateModified = modified,
+            Type = extension.Length > 0
+                ? extension.TrimStart('.').ToUpperInvariant() + " File"
+                : "File",
+            Size = size,
+            Icon = _iconService.GetFileIconByExtension(extension, fullPath)
+        };
+    }
 
     private DirectoryTreeNode CreateDirectoryNode(string fullPath, string displayName, bool isDrive = false)
     {
@@ -326,20 +373,15 @@ public sealed class FileSystemService
             FullPath = fullPath,
             Icon = isDrive
                 ? _iconService.GetDriveIcon(fullPath)
-                : _iconService.GetFolderIcon(fullPath)
+                : _iconService.GetSharedFolderIcon()
         };
 
-        if (MayHaveSubdirectories(fullPath))
-            node.Children.Add(CreateDummyChild());
-
+        node.Children.Add(CreateDummyChild());
         return node;
     }
 
     private static DirectoryTreeNode CreateDummyChild() =>
         new() { Name = string.Empty, FullPath = string.Empty };
-
-    private static bool MayHaveSubdirectories(string path) =>
-        Directory.EnumerateDirectories(path, "*", BrowseEnumerationOptions).Any();
 
     private static List<FileSystemEntry> SortEntries(List<FileSystemEntry> entries) =>
         entries
