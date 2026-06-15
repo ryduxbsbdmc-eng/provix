@@ -81,11 +81,8 @@ jobs:
         run: |
           $dir = "${{ steps.manifest.outputs.dir }}"
           $version = Split-Path $dir -Leaf
-          $exe = Get-ChildItem wingetcreate -Recurse -Filter wingetcreate.exe | Select-Object -First 1
-          if (-not $exe) { throw "wingetcreate.exe not found" }
 
-          $token = $env:WINGET_CREATE_GITHUB_TOKEN
-          if ([string]::IsNullOrWhiteSpace($token)) {
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)) {
             Write-Host "::warning::WINGET_TOKEN secret is not configured. Manifest was uploaded as workflow artifact only."
             Write-Host ""
             Write-Host "To enable automatic PR submission to microsoft/winget-pkgs:"
@@ -95,32 +92,6 @@ jobs:
             exit 0
           }
 
-          try {
-            $user = Invoke-RestMethod `
-              -Uri "https://api.github.com/user" `
-              -Headers @{
-                Authorization = "Bearer $token"
-                "User-Agent"  = "provix-winget"
-              }
-            Write-Host "GitHub token is valid for user: $($user.login)"
-          }
-          catch {
-            throw "WINGET_TOKEN is invalid or expired. Create a classic PAT with public_repo scope and update the repository secret. GitHub API error: $($_.Exception.Message)"
-          }
-
-          $maxAttempts = 3
-          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            Write-Host "Submitting WinGet PR (attempt $attempt/$maxAttempts)..."
-            & $exe.FullName submit $dir --prtitle "Provix.Provix $version"
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "WinGet PR submitted successfully."
-              exit 0
-            }
-
-            if ($attempt -lt $maxAttempts) {
-              Write-Host "Submit failed. Retrying in 15 seconds..."
-              Start-Sleep -Seconds 15
-            }
-          }
-
-          throw "WinGet submit failed after $maxAttempts attempts. Use a classic PAT with public_repo scope, not a fine-grained token."
+          & "$env:GITHUB_WORKSPACE/scripts/Submit-WingetManifest.ps1" `
+            -ManifestDir $dir `
+            -PackageVersion $version
