@@ -3,8 +3,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FileExplorer.Controls;
 using FileExplorer.Helpers;
 using FileExplorer.Models;
@@ -19,7 +21,10 @@ public partial class MainWindow : Window
     private enum NamePromptMode
     {
         NewFolder,
-        NewTextFile
+        NewTextFile,
+        GitCommit,
+        GitAmend,
+        GitBranch
     }
 
     private readonly FileIconService _iconService = new();
@@ -41,6 +46,12 @@ public partial class MainWindow : Window
 
     private NamePromptMode _namePromptMode;
     private DirectoryPaneState? _namePromptTargetPane;
+    private string? _namePromptGitTargetDirectory;
+    private bool _isGitCommitInProgress;
+    private bool _isGitHistoryInProgress;
+    private bool _commitHistoryRestorePending;
+    private DirectoryPaneState? _commitHistoryTargetPane;
+    private string? _commitHistoryTargetDirectory;
     private bool _isEditorOpen;
     private int _chromeDimDepth;
     private List<FileSystemEntry> _pendingDeleteEntries = [];
@@ -130,11 +141,18 @@ public partial class MainWindow : Window
         control.PathSearchKeyDown += (_, e) => PanePathSearchBox_KeyDown(pane, e);
         control.FileListMouseDoubleClick += (_, e) => PaneFileList_MouseDoubleClick(pane, e);
         control.FileListContextMenuOpening += (_, e) => PaneFileList_ContextMenuOpening(pane, e);
+        if (control.FileListView.ContextMenu is ContextMenu fileContextMenu)
+            fileContextMenu.Opened += (_, _) => UpdatePaneFileListContextMenuState(pane);
         control.NewFolderRequested += (_, _) => ShowNamePrompt(NamePromptMode.NewFolder, pane);
         control.NewTextFileRequested += (_, _) => ShowNamePrompt(NamePromptMode.NewTextFile, pane);
         control.DeleteRequested += (_, _) => DeleteSelectedItems(pane);
         control.ExtractArchiveRequested += async (_, _) => await ExtractSelectedArchivesFromPaneAsync(pane);
         control.FileDropRequested += (_, e) => HandleFileDrop(pane, e.SourcePaths, e.TargetDirectory);
+        control.GitInitRequested += (_, e) => HandleGitInit(pane, e.TargetDirectory);
+        control.GitCommitRequested += (_, _) => HandleGitCommitRequest(pane);
+        control.GitAmendRequested += (_, _) => HandleGitAmendRequest(pane);
+        control.GitHistoryRequested += (_, _) => HandleGitHistoryRequest(pane);
+        control.GitBranchRequested += (_, e) => HandleGitBranchRequest(pane, e.TargetDirectory);
 
         _panes.Add(pane);
         UpdatePaneCloseButtonsVisibility();
@@ -191,6 +209,9 @@ public partial class MainWindow : Window
 
         if (_namePromptTargetPane == pane)
             HideNamePrompt();
+
+        if (_commitHistoryTargetPane == pane)
+            HideCommitHistoryOverlay(animate: false);
 
         RebuildPaneHost();
         UpdatePaneCloseButtonsVisibility();
@@ -617,7 +638,7 @@ public partial class MainWindow : Window
         ForwardNavigationButton.IsEnabled = pane.ForwardHistory.Count > 0;
     }
 
-    private void RefreshDirectoryListing(DirectoryPaneState pane)
+    private async void RefreshDirectoryListing(DirectoryPaneState pane)
     {
         if (string.IsNullOrEmpty(pane.CurrentPath))
             return;
@@ -629,6 +650,61 @@ public partial class MainWindow : Window
 
         if (pane == _activePane)
             StatusText.Text = $"{contents.Count} item(s)";
+
+        await RefreshGitStatusAsync(pane);
+        await EnrichEntriesWithGitStatusAsync(pane, contents);
+    }
+
+    private async Task EnrichEntriesWithGitStatusAsync(DirectoryPaneState pane, IReadOnlyList<FileSystemEntry> entries)
+    {
+        if (entries.Count == 0) return;
+
+        var repoRoot = GitRepositoryHelper.GetGitRepositoryRoot(pane.CurrentPath);
+        if (repoRoot is null) return;
+
+        var status = await GitService.GetWorkingTreeStatusAsync(repoRoot);
+        if (!status.Success || status.Changes.Count == 0) return;
+
+        var repoRootNormalized = Path.GetFullPath(repoRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        foreach (var entry in entries)
+        {
+            var relativePath = Path.GetRelativePath(repoRootNormalized, entry.FullPath).Replace('\\', '/');
+            
+            // Check if the file itself is modified or if it's a directory containing modifications
+            var match = status.Changes.FirstOrDefault(c => 
+                string.Equals(c.FilePath, relativePath, StringComparison.OrdinalIgnoreCase) ||
+                (entry.IsDirectory && c.FilePath.StartsWith(relativePath + "/", StringComparison.OrdinalIgnoreCase)));
+
+            if (match is not null)
+            {
+                entry.GitStatus = entry.IsDirectory ? GitFileStatusType.Modified : match.Status;
+            }
+        }
+
+        pane.Control.FileListView.Items.Refresh();
+    }
+
+    private async Task RefreshGitStatusAsync(DirectoryPaneState pane)
+    {
+        if (string.IsNullOrEmpty(pane.CurrentPath))
+        {
+            pane.Control.UpdateGitStatus(false, string.Empty, 0);
+            return;
+        }
+
+        var isRepo = await GitService.IsGitRepositoryAsync(pane.CurrentPath);
+        if (!isRepo)
+        {
+            pane.Control.UpdateGitStatus(false, string.Empty, 0);
+            return;
+        }
+
+        var status = await GitService.GetWorkingTreeStatusAsync(pane.CurrentPath);
+        if (status.Success)
+        {
+            pane.Control.UpdateGitStatus(true, status.BranchName, status.ChangedFileCount);
+        }
     }
 
     private static void ClearPaneFileListSelection(DirectoryPaneState pane)
@@ -908,14 +984,16 @@ public partial class MainWindow : Window
         ChromeDimOverlay.BeginAnimation(UIElement.OpacityProperty, animation);
     }
 
-    private void PaneFileList_ContextMenuOpening(DirectoryPaneState pane, ContextMenuEventArgs e)
+    private void PaneFileList_ContextMenuOpening(DirectoryPaneState pane, ContextMenuEventArgs e) =>
+        UpdatePaneFileListContextMenuState(pane);
+
+    private void UpdatePaneFileListContextMenuState(DirectoryPaneState pane)
     {
         SetActivePane(pane);
 
         if (pane.Control.FileListView.ContextMenu is not ContextMenu menu)
             return;
 
-        var hasPath = !string.IsNullOrEmpty(pane.CurrentPath);
         var selectedEntries = GetSelectedFileEntries(pane.Control.FileListView);
         var hasSelection = selectedEntries.Count > 0;
         var archiveEntries = selectedEntries
@@ -928,19 +1006,237 @@ public partial class MainWindow : Window
         pane.Control.ExtractArchiveSeparatorControl.Visibility =
             isArchiveSelection ? Visibility.Visible : Visibility.Collapsed;
 
+        var hasResolvedPath = TryGetGitContextDirectory(pane, out var resolvedDirectory);
+        var repositoryRoot = hasResolvedPath
+            ? GitRepositoryHelper.GetGitRepositoryRoot(resolvedDirectory)
+            : null;
+        var isGitRepo = repositoryRoot is not null;
+
+        pane.Control.GitInitMenuItemControl.IsEnabled = hasResolvedPath && !isGitRepo;
+        pane.Control.GitCommitMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
+        pane.Control.GitAmendMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
+        pane.Control.GitHistoryMenuItemControl.IsEnabled = isGitRepo && !_isGitHistoryInProgress;
+
         foreach (var item in menu.Items)
         {
             if (item is not MenuItem menuItem)
                 continue;
 
-            menuItem.IsEnabled = (string?)menuItem.Tag switch
+            var tag = (string?)menuItem.Tag;
+            if (tag is "GitInit" or "GitCommit" or "GitAmend" or "GitHistory")
+                continue;
+
+            menuItem.IsEnabled = tag switch
             {
                 "Delete" => hasSelection,
-                "ExtractArchive" => isArchiveSelection && hasPath && !_isExtracting,
-                "ShowWindowsMenu" => hasSelection || hasPath,
-                _ => hasPath
+                "ExtractArchive" => isArchiveSelection && hasResolvedPath && !_isExtracting,
+                "ShowWindowsMenu" => hasSelection || hasResolvedPath,
+                _ => hasResolvedPath
             };
         }
+    }
+
+    private static bool TryGetGitContextDirectory(DirectoryPaneState pane, out string contextDirectory)
+    {
+        if (pane.Control.TryResolveGitContextDirectory(out contextDirectory))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(pane.CurrentPath))
+        {
+            contextDirectory = string.Empty;
+            return false;
+        }
+
+        contextDirectory = Path.GetFullPath(pane.CurrentPath);
+        return true;
+    }
+
+    private static bool TryResolveGitRepositoryRoot(DirectoryPaneState pane, out string repositoryRoot)
+    {
+        repositoryRoot = string.Empty;
+
+        if (!TryGetGitContextDirectory(pane, out var contextDirectory))
+            return false;
+
+        repositoryRoot = GitRepositoryHelper.GetGitRepositoryRoot(contextDirectory) ?? string.Empty;
+        return !string.IsNullOrEmpty(repositoryRoot);
+    }
+
+    private static string? ResolveGitWorkingPath(DirectoryPaneState pane)
+    {
+        if (!TryGetGitContextDirectory(pane, out var contextDirectory))
+            return null;
+
+        return GitRepositoryHelper.GetGitRepositoryRoot(contextDirectory) ?? contextDirectory;
+    }
+
+    private bool EnsureGitRepositoryOrNotify(DirectoryPaneState pane, out string repositoryRoot)
+    {
+        var loc = LocalizationManager.Instance;
+        repositoryRoot = string.Empty;
+
+        if (!TryResolveGitRepositoryRoot(pane, out repositoryRoot))
+        {
+            StatusText.Text = loc["UI_GitNotRepositoryPrompt"];
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool EnsureGitRepositoryOrNotify(string? targetPath)
+    {
+        var loc = LocalizationManager.Instance;
+
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            StatusText.Text = loc["UI_GitNoDirectory"];
+            return false;
+        }
+
+        if (GitRepositoryHelper.GetGitRepositoryRoot(targetPath) is null)
+        {
+            StatusText.Text = loc["UI_GitNotRepositoryPrompt"];
+            return false;
+        }
+
+        return true;
+    }
+
+    private void HandleGitCommitRequest(DirectoryPaneState pane) =>
+        BeginGitCommitPromptWorkflow(pane, NamePromptMode.GitCommit, requireChanges: false);
+
+    private void HandleGitAmendRequest(DirectoryPaneState pane) =>
+        BeginGitCommitPromptWorkflow(pane, NamePromptMode.GitAmend, requireChanges: true);
+
+    private void BeginGitCommitPromptWorkflow(
+        DirectoryPaneState pane,
+        NamePromptMode mode,
+        bool requireChanges)
+    {
+        SetActivePane(pane);
+        var loc = LocalizationManager.Instance;
+
+        if (!TryResolveGitRepositoryRoot(pane, out var repositoryRoot))
+        {
+            StatusText.Text = loc["UI_GitNotRepositoryPrompt"];
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            () => _ = requireChanges
+                ? RunGitCommitPreflightAndPromptAsync(pane, repositoryRoot, mode)
+                : ShowGitCommitPromptAsync(pane, repositoryRoot, mode),
+            DispatcherPriority.Input);
+    }
+
+    private async Task ShowGitCommitPromptAsync(
+        DirectoryPaneState pane,
+        string repositoryRoot,
+        NamePromptMode mode)
+    {
+        var loc = LocalizationManager.Instance;
+
+        if (!await TryFlushOpenEditorBeforeGitAsync(repositoryRoot))
+        {
+            StatusText.Text = loc["UI_GitEditorSaveFailed"];
+            return;
+        }
+
+        var status = await GitService.GetWorkingTreeStatusAsync(repositoryRoot);
+        ShowNamePrompt(mode, pane, repositoryRoot, status.Success ? status.ChangedFileCount : null, status.Success ? status.Changes : null);
+        StatusText.Text = loc["UI_Ready"];
+    }
+
+    private async Task RunGitCommitPreflightAndPromptAsync(
+        DirectoryPaneState pane,
+        string repositoryRoot,
+        NamePromptMode mode)
+    {
+        var loc = LocalizationManager.Instance;
+
+        StatusText.Text = loc["UI_GitCheckingChanges"];
+
+        if (!await TryFlushOpenEditorBeforeGitAsync(repositoryRoot))
+        {
+            StatusText.Text = loc["UI_GitEditorSaveFailed"];
+            return;
+        }
+
+        var status = await GitService.GetWorkingTreeStatusAsync(repositoryRoot).ConfigureAwait(true);
+
+        if (!status.Success)
+        {
+            StatusText.Text = status.Message;
+            MessageBox.Show(status.Message, loc["UI_GitCommitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (status.IsClean)
+        {
+            StatusText.Text = loc["UI_GitNoChangesDetected"];
+            MessageBox.Show(
+                loc["UI_GitNoChangesDetected"],
+                loc["UI_GitCommitErrorTitle"],
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        ShowNamePrompt(mode, pane, repositoryRoot, status.ChangedFileCount, status.Changes);
+        StatusText.Text = loc["UI_Ready"];
+    }
+
+    private async void HandleGitBranchRequest(DirectoryPaneState pane, string targetDirectory)
+    {
+        var loc = LocalizationManager.Instance;
+        if (string.IsNullOrWhiteSpace(targetDirectory)) return;
+
+        var branches = await GitService.GetBranchesAsync(targetDirectory);
+        if (branches.Count == 0) return;
+
+        var menu = new ContextMenu();
+        
+        var titleItem = new MenuItem { Header = loc["UI_GitBranchList"], IsEnabled = false, FontWeight = FontWeights.Bold };
+        menu.Items.Add(titleItem);
+        menu.Items.Add(new Separator());
+
+        foreach (var branch in branches)
+        {
+            var item = new MenuItem { Header = branch.Name, IsCheckable = true, IsChecked = branch.IsCurrent };
+            item.Click += async (_, _) =>
+            {
+                if (branch.IsCurrent) return;
+                var result = await GitService.SwitchBranchAsync(targetDirectory, branch.Name);
+                if (result.Success)
+                {
+                    StatusText.Text = string.Format(loc["UI_GitBranchSwitched"], branch.Name);
+                    await RefreshGitStatusAsync(pane);
+                }
+                else
+                {
+                    MessageBox.Show(result.Message, loc["UI_GitBranchSwitchError"], MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+        var createItem = new MenuItem { Header = loc["UI_GitCreateBranch"] };
+        createItem.Click += (_, _) => ShowNamePrompt(NamePromptMode.GitBranch, pane, targetDirectory);
+        menu.Items.Add(createItem);
+
+        menu.PlacementTarget = pane.Control.GitBranchButton;
+        menu.Placement = PlacementMode.Top;
+        menu.IsOpen = true;
+    }
+
+    private void HandleGitHistoryRequest(DirectoryPaneState pane)
+    {
+        if (!EnsureGitRepositoryOrNotify(pane, out var repositoryRoot))
+            return;
+
+        _ = ShowCommitHistoryAsync(pane, repositoryRoot);
     }
 
     private static List<FileSystemEntry> GetSelectedFileEntries(ListView listView) =>
@@ -1320,25 +1616,88 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowNamePrompt(NamePromptMode mode, DirectoryPaneState pane)
+    private void ShowNamePrompt(
+        NamePromptMode mode,
+        DirectoryPaneState pane,
+        string? gitTargetDirectory = null,
+        int? changedFileCount = null,
+        List<GitFileStatus>? gitChanges = null)
     {
-        if (string.IsNullOrEmpty(pane.CurrentPath))
+        var loc = LocalizationManager.Instance;
+
+        if (mode != NamePromptMode.GitCommit && mode != NamePromptMode.GitAmend && mode != NamePromptMode.GitBranch && string.IsNullOrEmpty(pane.CurrentPath))
         {
             StatusText.Text = "Select a folder before creating items.";
             return;
         }
 
+        if ((mode == NamePromptMode.GitCommit || mode == NamePromptMode.GitAmend || mode == NamePromptMode.GitBranch) &&
+            string.IsNullOrWhiteSpace(gitTargetDirectory))
+        {
+            StatusText.Text = loc["UI_GitNoDirectory"];
+            return;
+        }
+
         _namePromptTargetPane = pane;
         _namePromptMode = mode;
-        NamePromptTitleText.Text = mode == NamePromptMode.NewFolder
-            ? LocalizationManager.Instance["UI_NewFolder"]
-            : LocalizationManager.Instance["UI_NewTextFile"];
-        NamePromptTextBox.Text = mode == NamePromptMode.NewTextFile ? "New Text Document.txt" : "New Folder";
+        _namePromptGitTargetDirectory = gitTargetDirectory is null ? null : Path.GetFullPath(gitTargetDirectory);
+
+        GitCommitFilesList.Visibility = Visibility.Collapsed;
+        GitCommitFilesList.ItemsSource = null;
+
+        switch (mode)
+        {
+            case NamePromptMode.NewFolder:
+                NamePromptTitleText.Text = loc["UI_NewFolder"];
+                NamePromptTextBox.Text = "New Folder";
+                NamePromptCreateButton.Content = loc["UI_Create"];
+                break;
+            case NamePromptMode.NewTextFile:
+                NamePromptTitleText.Text = loc["UI_NewTextFile"];
+                NamePromptTextBox.Text = "New Text Document.txt";
+                NamePromptCreateButton.Content = loc["UI_Create"];
+                break;
+            case NamePromptMode.GitCommit:
+                NamePromptTitleText.Text = changedFileCount is int commitCount
+                    ? string.Format(loc["UI_GitCommitMessageWithCount"], commitCount)
+                    : loc["UI_GitCommitMessage"];
+                NamePromptTextBox.Text = string.Empty;
+                NamePromptCreateButton.Content = loc["UI_Commit"];
+                if (gitChanges is not null && gitChanges.Count > 0)
+                {
+                    GitCommitFilesList.ItemsSource = gitChanges;
+                    GitCommitFilesList.Visibility = Visibility.Visible;
+                }
+                break;
+            case NamePromptMode.GitAmend:
+                NamePromptTitleText.Text = changedFileCount is int amendCount
+                    ? string.Format(loc["UI_GitAmendMessageWithCount"], amendCount)
+                    : loc["UI_GitAmendMessage"];
+                NamePromptTextBox.Text = string.Empty;
+                NamePromptCreateButton.Content = loc["UI_GitAmendConfirm"];
+                if (gitChanges is not null && gitChanges.Count > 0)
+                {
+                    GitCommitFilesList.ItemsSource = gitChanges;
+                    GitCommitFilesList.Visibility = Visibility.Visible;
+                }
+                break;
+            case NamePromptMode.GitBranch:
+                NamePromptTitleText.Text = loc["UI_GitCreateBranch"];
+                NamePromptTextBox.Text = string.Empty;
+                NamePromptCreateButton.Content = loc["UI_Create"];
+                break;
+        }
+
         HideNamePromptError();
         PushChromeDimOverlay();
         NamePromptOverlay.Visibility = Visibility.Visible;
-        NamePromptTextBox.Focus();
-        NamePromptTextBox.SelectAll();
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            NamePromptTextBox.Focus();
+            Keyboard.Focus(NamePromptTextBox);
+            NamePromptTextBox.CaretIndex = NamePromptTextBox.Text.Length;
+        }, DispatcherPriority.Input);
     }
 
     private void HideNamePrompt()
@@ -1348,7 +1707,10 @@ public partial class MainWindow : Window
 
         NamePromptOverlay.Visibility = Visibility.Collapsed;
         NamePromptTextBox.Clear();
+        GitCommitFilesList.ItemsSource = null;
+        GitCommitFilesList.Visibility = Visibility.Collapsed;
         _namePromptTargetPane = null;
+        _namePromptGitTargetDirectory = null;
         HideNamePromptError();
         PopChromeDimOverlay();
     }
@@ -1387,8 +1749,58 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task TryGitCreateBranchFromPromptAsync()
+    {
+        var loc = LocalizationManager.Instance;
+        var branchName = NamePromptTextBox.Text.Trim();
+        var pane = _namePromptTargetPane;
+        var targetDirectory = _namePromptGitTargetDirectory;
+
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            ShowNamePromptError(loc["UI_GitNewBranchName"]);
+            return;
+        }
+
+        if (pane is null || string.IsNullOrWhiteSpace(targetDirectory))
+        {
+            ShowNamePromptError(loc["UI_GitNoDirectory"]);
+            return;
+        }
+
+        var result = await GitService.CreateBranchAsync(targetDirectory, branchName);
+        if (result.Success)
+        {
+            HideNamePrompt();
+            StatusText.Text = string.Format(loc["UI_GitBranchCreated"], branchName);
+            await RefreshGitStatusAsync(pane);
+        }
+        else
+        {
+            ShowNamePromptError(result.Message);
+        }
+    }
+
     private void TryCreateFromNamePrompt()
     {
+        if (_namePromptMode == NamePromptMode.GitCommit)
+        {
+            _ = TryGitCommitFromPromptAsync();
+            return;
+        }
+
+        if (_namePromptMode == NamePromptMode.GitAmend)
+        {
+            _ = TryGitAmendFromPromptAsync();
+            return;
+        }
+
+        if (_namePromptMode == NamePromptMode.GitBranch)
+        {
+            _ = TryGitCreateBranchFromPromptAsync();
+            return;
+        }
+
         if (_namePromptTargetPane is null || string.IsNullOrEmpty(_namePromptTargetPane.CurrentPath))
         {
             ShowNamePromptError("No folder is selected.");
@@ -1449,6 +1861,486 @@ public partial class MainWindow : Window
         {
             ShowNamePromptError(ex.Message);
             StatusText.Text = ex.Message;
+        }
+    }
+
+    private async void HandleGitInit(DirectoryPaneState pane, string targetDirectory)
+    {
+        var loc = LocalizationManager.Instance;
+
+        if (string.IsNullOrWhiteSpace(targetDirectory))
+        {
+            StatusText.Text = loc["UI_GitNoDirectory"];
+            MessageBox.Show(loc["UI_GitNoDirectory"], loc["UI_GitInitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string workingPath;
+        try
+        {
+            workingPath = Path.GetFullPath(targetDirectory);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
+            MessageBox.Show(ex.Message, loc["UI_GitInitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        if (!Directory.Exists(workingPath))
+        {
+            const string message = "Target directory does not exist.";
+            StatusText.Text = message;
+            MessageBox.Show(message, loc["UI_GitInitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        StatusText.Text = loc["UI_GitInitializing"];
+
+        try
+        {
+            var result = await GitService.InitializeRepositoryAsync(workingPath).ConfigureAwait(true);
+
+            if (result.Success && GitRepositoryHelper.GetGitRepositoryRoot(workingPath) is not null)
+            {
+                var successMessage = loc["UI_GitInitSuccess"];
+                StatusText.Text = successMessage;
+                RefreshDirectoryListing(pane);
+                UpdatePaneFileListContextMenuState(pane);
+                MessageBox.Show(successMessage, loc["UI_GitInitSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var errorMessage = result.Success
+                ? loc["UI_GitInitMissingMetadata"]
+                : result.Message;
+
+            StatusText.Text = errorMessage;
+            MessageBox.Show(errorMessage, loc["UI_GitInitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
+            MessageBox.Show(ex.ToString(), loc["UI_GitInitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task TryGitCommitFromPromptAsync()
+    {
+        await ExecuteGitCommitWorkflowAsync(
+            emptyMessageKey: "UI_GitCommitMessageRequired",
+            statusInProgressKey: "UI_GitCommitting",
+            executeAsync: GitService.CommitAllAsync);
+    }
+
+    private async Task TryGitAmendFromPromptAsync()
+    {
+        await ExecuteGitCommitWorkflowAsync(
+            emptyMessageKey: "UI_GitCommitMessageRequired",
+            statusInProgressKey: "UI_GitAmending",
+            executeAsync: GitService.AmendLastCommitAsync);
+    }
+
+    private async Task ExecuteGitCommitWorkflowAsync(
+        string emptyMessageKey,
+        string statusInProgressKey,
+        Func<string, string, Task<GitResult>> executeAsync)
+    {
+        var loc = LocalizationManager.Instance;
+        var commitMessage = NamePromptTextBox.Text.Trim();
+        var pane = _namePromptTargetPane;
+        var targetDirectory = _namePromptGitTargetDirectory;
+
+        if (string.IsNullOrWhiteSpace(commitMessage))
+        {
+            ShowNamePromptError(loc[emptyMessageKey]);
+            return;
+        }
+
+        if (pane is null || string.IsNullOrWhiteSpace(targetDirectory))
+        {
+            ShowNamePromptError(loc["UI_GitNoDirectory"]);
+            return;
+        }
+
+        targetDirectory = Path.GetFullPath(targetDirectory);
+
+        HideNamePrompt();
+
+        _isGitCommitInProgress = true;
+        StatusText.Text = loc[statusInProgressKey];
+
+        try
+        {
+            if (!await TryFlushOpenEditorBeforeGitAsync(targetDirectory))
+            {
+                StatusText.Text = loc["UI_GitEditorSaveFailed"];
+                return;
+            }
+
+            var result = await executeAsync(targetDirectory, commitMessage).ConfigureAwait(true);
+            await HandleGitCommitResultAsync(pane, result);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
+            MessageBox.Show(ex.ToString(), loc["UI_GitCommitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _isGitCommitInProgress = false;
+        }
+    }
+
+    private async Task HandleGitCommitResultAsync(DirectoryPaneState pane, GitResult result)
+    {
+        var loc = LocalizationManager.Instance;
+
+        if (result.NoChangesToCommit)
+        {
+            StatusText.Text = loc["UI_GitNothingToCommit"];
+            return;
+        }
+
+        if (result.NothingToAmend)
+        {
+            StatusText.Text = loc["UI_GitNothingToAmend"];
+            return;
+        }
+
+        StatusText.Text = result.Message;
+
+        if (!result.Success)
+        {
+            MessageBox.Show(result.Message, loc["UI_GitCommitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        RefreshDirectoryListing(pane);
+        await RefreshCommitHistoryIfVisibleAsync();
+    }
+
+    private async Task<bool> TryFlushOpenEditorBeforeGitAsync(string repositoryPath)
+    {
+        if (!_isEditorOpen || string.IsNullOrEmpty(_editorFilePath) || !_editorIsDirty)
+            return true;
+
+        if (!IsPathUnderDirectory(_editorFilePath, repositoryPath))
+            return true;
+
+        await SaveEditorFileAsync();
+        return !_editorIsDirty;
+    }
+
+    private static bool IsPathUnderDirectory(string filePath, string directoryPath)
+    {
+        var fullFile = Path.GetFullPath(filePath);
+        var fullDirectory = Path.GetFullPath(directoryPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        var directoryPrefix = fullDirectory + Path.DirectorySeparatorChar;
+        return fullFile.StartsWith(directoryPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task RefreshCommitHistoryIfVisibleAsync()
+    {
+        if (CommitHistoryOverlay.Visibility != Visibility.Visible)
+            return;
+
+        await RefreshCommitHistoryListAsync();
+    }
+
+    private async Task ShowCommitHistoryAsync(DirectoryPaneState pane, string repositoryRoot)
+    {
+        var loc = LocalizationManager.Instance;
+
+        if (string.IsNullOrWhiteSpace(repositoryRoot))
+        {
+            StatusText.Text = loc["UI_GitNoDirectory"];
+            return;
+        }
+
+        repositoryRoot = Path.GetFullPath(repositoryRoot);
+
+        _commitHistoryTargetPane = pane;
+        _commitHistoryTargetDirectory = repositoryRoot;
+        CommitHistoryListBox.ItemsSource = null;
+        ResetCommitHistoryActionState();
+        HideCommitHistoryError();
+
+        _isGitHistoryInProgress = true;
+        StatusText.Text = loc["UI_GitLoadingHistory"];
+
+        try
+        {
+            var historyResult = await GitService.GetCommitHistoryAsync(repositoryRoot);
+            if (!historyResult.Success)
+            {
+                StatusText.Text = historyResult.Message;
+                return;
+            }
+
+            await BindCommitHistoryListAsync(historyResult.Commits);
+            PushChromeDimOverlay();
+            CommitHistoryOverlay.Visibility = Visibility.Visible;
+            UiAnimationHelper.ShowOverlay(CommitHistoryPanel);
+            StatusText.Text = loc["UI_Ready"];
+        }
+        finally
+        {
+            _isGitHistoryInProgress = false;
+        }
+    }
+
+    private void HideCommitHistoryOverlay(bool animate = true)
+    {
+        if (CommitHistoryOverlay.Visibility != Visibility.Visible)
+            return;
+
+        void CompleteHide()
+        {
+            CommitHistoryOverlay.Visibility = Visibility.Collapsed;
+            CommitHistoryPanel.Visibility = Visibility.Visible;
+            CommitHistoryListBox.ItemsSource = null;
+            _commitHistoryTargetPane = null;
+            _commitHistoryTargetDirectory = null;
+            ResetCommitHistoryActionState();
+            HideCommitDeleteConfirmOverlay();
+            HideCommitHistoryError();
+            PopChromeDimOverlay();
+        }
+
+        if (!animate)
+        {
+            CompleteHide();
+            return;
+        }
+
+        CommitHistoryPanel.Visibility = Visibility.Visible;
+        UiAnimationHelper.HideOverlay(CommitHistoryPanel, CompleteHide);
+    }
+
+    private void ResetCommitHistoryActionState()
+    {
+        _commitHistoryRestorePending = false;
+        CommitHistoryWarningText.Visibility = Visibility.Collapsed;
+        CommitHistoryRestoreButton.Visibility = Visibility.Visible;
+        CommitHistoryConfirmRestoreButton.Visibility = Visibility.Collapsed;
+
+        var hasSelection = CommitHistoryListBox.SelectedItem is GitCommit;
+        CommitHistoryRestoreButton.IsEnabled = hasSelection;
+        CommitHistoryDeleteCommitButton.IsEnabled = hasSelection;
+    }
+
+    private async Task BindCommitHistoryListAsync(IReadOnlyList<GitCommit> commits)
+    {
+        CommitHistoryListBox.ItemsSource = commits;
+        CommitHistoryListBox.SelectedIndex = commits.Count > 0 ? 0 : -1;
+        ResetCommitHistoryActionState();
+        await Task.CompletedTask;
+    }
+
+    private async Task RefreshCommitHistoryListAsync()
+    {
+        var targetDirectory = _commitHistoryTargetDirectory;
+        if (string.IsNullOrWhiteSpace(targetDirectory))
+            return;
+
+        targetDirectory = Path.GetFullPath(targetDirectory);
+        _commitHistoryTargetDirectory = targetDirectory;
+
+        CommitHistoryListBox.ItemsSource = null;
+
+        var historyResult = await GitService.GetCommitHistoryAsync(targetDirectory);
+        if (!historyResult.Success)
+        {
+            ShowCommitHistoryError(historyResult.Message);
+            StatusText.Text = historyResult.Message;
+            return;
+        }
+
+        await BindCommitHistoryListAsync(historyResult.Commits);
+    }
+
+    private void ShowCommitDeleteConfirmOverlay()
+    {
+        if (CommitHistoryListBox.SelectedItem is not GitCommit)
+            return;
+
+        HideCommitHistoryError();
+        CommitDeleteConfirmOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void HideCommitDeleteConfirmOverlay()
+    {
+        CommitDeleteConfirmOverlay.Visibility = Visibility.Collapsed;
+        CommitDeleteConfirmYesButton.IsEnabled = true;
+        CommitDeleteConfirmCancelButton.IsEnabled = true;
+    }
+
+    private void SetCommitHistoryActionsEnabled(bool isEnabled)
+    {
+        CommitHistoryCancelButton.IsEnabled = isEnabled;
+        CommitHistoryDeleteCommitButton.IsEnabled = isEnabled && CommitHistoryListBox.SelectedItem is GitCommit;
+        CommitHistoryRestoreButton.IsEnabled = isEnabled && CommitHistoryListBox.SelectedItem is GitCommit;
+        CommitHistoryConfirmRestoreButton.IsEnabled = isEnabled;
+    }
+
+    private void ShowCommitHistoryError(string message)
+    {
+        CommitHistoryErrorText.Text = message;
+        CommitHistoryErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void HideCommitHistoryError()
+    {
+        CommitHistoryErrorText.Text = string.Empty;
+        CommitHistoryErrorText.Visibility = Visibility.Collapsed;
+    }
+
+    private void CommitHistoryListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_commitHistoryRestorePending)
+            return;
+
+        var hasSelection = CommitHistoryListBox.SelectedItem is GitCommit;
+        CommitHistoryRestoreButton.IsEnabled = hasSelection;
+        CommitHistoryDeleteCommitButton.IsEnabled = hasSelection;
+    }
+
+    private void CommitHistoryCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        HideCommitDeleteConfirmOverlay();
+        HideCommitHistoryOverlay();
+    }
+
+    private void CommitHistoryDeleteCommitButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CommitHistoryListBox.SelectedItem is not GitCommit)
+            return;
+
+        ShowCommitDeleteConfirmOverlay();
+    }
+
+    private void CommitDeleteConfirmCancelButton_Click(object sender, RoutedEventArgs e) =>
+        HideCommitDeleteConfirmOverlay();
+
+    private async void CommitDeleteConfirmYesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CommitHistoryListBox.SelectedItem is not GitCommit selectedCommit ||
+            _commitHistoryTargetPane is null ||
+            string.IsNullOrWhiteSpace(_commitHistoryTargetDirectory))
+        {
+            return;
+        }
+
+        var loc = LocalizationManager.Instance;
+        var pane = _commitHistoryTargetPane;
+        var targetDirectory = pane?.CurrentPath ?? _commitHistoryTargetDirectory;
+
+        if (string.IsNullOrWhiteSpace(targetDirectory))
+            return;
+
+        targetDirectory = Path.GetFullPath(targetDirectory);
+
+        HideCommitDeleteConfirmOverlay();
+        SetCommitHistoryActionsEnabled(false);
+        StatusText.Text = loc["UI_GitDeletingCommit"];
+
+        try
+        {
+            var result = await Task.Run(async () =>
+                await GitService.DeleteCommitAsync(targetDirectory, selectedCommit.Hash));
+
+            if (result.Success)
+            {
+                StatusText.Text = loc["UI_GitDeleteCommitSuccess"];
+                await RefreshCommitHistoryListAsync();
+                if (pane is not null)
+                    RefreshDirectoryListing(pane);
+                return;
+            }
+
+            var message = result.RebaseConflictAborted
+                ? loc["UI_GitDeleteCommitConflict"]
+                : result.Message;
+
+            ShowCommitHistoryError(message);
+            StatusText.Text = message;
+        }
+        catch (Exception ex)
+        {
+            ShowCommitHistoryError(ex.Message);
+            StatusText.Text = ex.Message;
+        }
+        finally
+        {
+            SetCommitHistoryActionsEnabled(true);
+            ResetCommitHistoryActionState();
+        }
+    }
+
+    private void CommitHistoryRestoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CommitHistoryListBox.SelectedItem is not GitCommit)
+            return;
+
+        _commitHistoryRestorePending = true;
+        CommitHistoryWarningText.Visibility = Visibility.Visible;
+        CommitHistoryRestoreButton.Visibility = Visibility.Collapsed;
+        CommitHistoryConfirmRestoreButton.Visibility = Visibility.Visible;
+        CommitHistoryDeleteCommitButton.IsEnabled = false;
+        HideCommitHistoryError();
+    }
+
+    private async void CommitHistoryConfirmRestoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CommitHistoryListBox.SelectedItem is not GitCommit selectedCommit ||
+            _commitHistoryTargetPane is null ||
+            string.IsNullOrWhiteSpace(_commitHistoryTargetDirectory))
+        {
+            return;
+        }
+
+        var loc = LocalizationManager.Instance;
+        var pane = _commitHistoryTargetPane;
+        var targetDirectory = Path.GetFullPath(_commitHistoryTargetDirectory);
+        var commitHash = selectedCommit.Hash.Trim();
+
+        if (string.IsNullOrWhiteSpace(commitHash))
+            return;
+
+        CommitHistoryConfirmRestoreButton.IsEnabled = false;
+        CommitHistoryCancelButton.IsEnabled = false;
+        CommitHistoryDeleteCommitButton.IsEnabled = false;
+        StatusText.Text = loc["UI_GitRestoring"];
+
+        try
+        {
+            var result = await GitService.RestoreToCommitAsync(targetDirectory, commitHash);
+
+            if (!result.Success)
+            {
+                ShowCommitHistoryError(result.Message);
+                StatusText.Text = result.Message;
+                MessageBox.Show(result.Message, loc["UI_GitRestoreErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
+                CommitHistoryConfirmRestoreButton.IsEnabled = true;
+                CommitHistoryCancelButton.IsEnabled = true;
+                return;
+            }
+
+            HideCommitHistoryOverlay();
+            CloseEditor();
+            StatusText.Text = result.Message;
+            NavigateToDirectory(pane, targetDirectory, syncTree: pane == _activePane, recordHistory: false);
+        }
+        catch (Exception ex)
+        {
+            ShowCommitHistoryError(ex.Message);
+            StatusText.Text = ex.Message;
+            MessageBox.Show(ex.ToString(), loc["UI_GitRestoreErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
+            CommitHistoryConfirmRestoreButton.IsEnabled = true;
+            CommitHistoryCancelButton.IsEnabled = true;
         }
     }
 

@@ -38,6 +38,12 @@ public partial class DirectoryPaneControl : UserControl
     public event RoutedEventHandler? DeleteRequested;
     public event RoutedEventHandler? ExtractArchiveRequested;
     public event EventHandler<FileDropEventArgs>? FileDropRequested;
+    public event EventHandler<GitDirectoryEventArgs>? GitInitRequested;
+    public event EventHandler<GitDirectoryEventArgs>? GitCommitRequested;
+
+    public event EventHandler<GitDirectoryEventArgs>? GitAmendRequested;
+    public event EventHandler<GitDirectoryEventArgs>? GitHistoryRequested;
+    public event EventHandler<GitDirectoryEventArgs>? GitBranchRequested;
 
     public DirectoryPaneControl()
     {
@@ -50,6 +56,14 @@ public partial class DirectoryPaneControl : UserControl
     public TextBox PathSearchTextBox => PathSearchBox;
 
     public MenuItem ExtractArchiveMenuItemControl => ExtractArchiveMenuItem;
+
+    public MenuItem GitInitMenuItemControl => GitInitMenuItem;
+
+    public MenuItem GitCommitMenuItemControl => GitCommitMenuItem;
+
+    public MenuItem GitAmendMenuItemControl => GitAmendMenuItem;
+
+    public MenuItem GitHistoryMenuItemControl => GitHistoryMenuItem;
 
     public Separator ExtractArchiveSeparatorControl => ExtractArchiveSeparator;
 
@@ -571,6 +585,114 @@ public partial class DirectoryPaneControl : UserControl
 
     private void ExtractArchiveMenuItem_Click(object sender, RoutedEventArgs e) =>
         ExtractArchiveRequested?.Invoke(sender, e);
+
+    private void GitInitMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetContextMenuTargetDirectory(out var directory))
+            return;
+
+        GitInitRequested?.Invoke(this, new GitDirectoryEventArgs { TargetDirectory = directory });
+    }
+
+    private void GitCommitMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetPaneCurrentDirectory(out var directory))
+            return;
+
+        GitCommitRequested?.Invoke(this, new GitDirectoryEventArgs { TargetDirectory = directory });
+    }
+
+    private void GitAmendMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetPaneCurrentDirectory(out var directory))
+            return;
+
+        GitAmendRequested?.Invoke(this, new GitDirectoryEventArgs { TargetDirectory = directory });
+    }
+
+    private void GitHistoryMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetPaneCurrentDirectory(out var directory))
+            return;
+
+        GitHistoryRequested?.Invoke(this, new GitDirectoryEventArgs { TargetDirectory = directory });
+    }
+
+    public void UpdateGitStatus(bool isRepo, string branch, int changeCount)
+    {
+        GitStatusBar.Visibility = isRepo ? Visibility.Visible : Visibility.Collapsed;
+        if (!isRepo) return;
+
+        GitBranchText.Text = string.IsNullOrEmpty(branch) ? "DETACHED" : branch;
+        var loc = LocalizationManager.Instance;
+        GitStatusText.Text = changeCount == 1 
+            ? $"1 change" 
+            : $"{changeCount} changes";
+        
+        GitBranchButton.Content = loc["UI_GitSwitchBranch"] ?? "Switch Branch";
+    }
+
+    private void GitBranchButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetPaneCurrentDirectory(out var directory))
+            return;
+
+        GitBranchRequested?.Invoke(this, new GitDirectoryEventArgs { TargetDirectory = directory });
+    }
+
+    public bool TryGetPaneCurrentDirectory(out string directory)
+    {
+        directory = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(PaneState?.CurrentPath))
+            return false;
+
+        try
+        {
+            directory = Path.GetFullPath(PaneState.CurrentPath);
+            return Directory.Exists(directory);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public bool TryResolveGitContextDirectory(out string directory)
+    {
+        directory = string.Empty;
+
+        var selectedEntries = FileList.SelectedItems
+            .Cast<object>()
+            .OfType<FileSystemEntry>()
+            .ToList();
+
+        if (selectedEntries.Count == 1)
+        {
+            var entry = selectedEntries[0];
+            var candidate = entry.IsDirectory
+                ? entry.FullPath
+                : Path.GetDirectoryName(entry.FullPath) ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(candidate))
+            {
+                try
+                {
+                    directory = Path.GetFullPath(candidate);
+                    return Directory.Exists(directory);
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        return TryGetPaneCurrentDirectory(out directory);
+    }
+
+    public bool TryGetContextMenuTargetDirectory(out string directory) =>
+        TryResolveGitContextDirectory(out directory);
 
     private void ShowWindowsMenuMenuItem_Click(object sender, RoutedEventArgs e)
     {

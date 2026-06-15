@@ -11,6 +11,7 @@ public sealed class FileSystemEntry
     public string Type { get; init; } = string.Empty;
     public long Size { get; init; }
     public ImageSource? Icon { get; init; }
+    public GitFileStatusType GitStatus { get; set; } = GitFileStatusType.Unchanged;
 
     public string SizeDisplay => IsDirectory ? string.Empty : FormatSize(Size);
 
