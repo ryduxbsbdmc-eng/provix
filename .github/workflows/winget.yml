@@ -1,0 +1,110 @@
+name: Publish to WinGet
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  winget:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) { $tag = "v1.0.2" }
+          $version = $tag -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Download installer and compute SHA256
+        id: installer
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = if ("${{ github.event.release.tag_name }}") { "${{ github.event.release.tag_name }}" } else { "v$version" }
+          $tag = $tag -replace '^v', ''
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/Provix-Setup-$version.exe"
+          $out = "Provix-Setup-$version.exe"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          "installer_url=$url" >> $env:GITHUB_OUTPUT
+          "installer_sha256=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Generate WinGet manifests
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $url = "${{ steps.installer.outputs.installer_url }}"
+          $sha = "${{ steps.installer.outputs.installer_sha256 }}"
+          $dir = "winget-generated/Provix.Provix/$version"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+
+          PackageIdentifier: Provix.Provix
+          PackageVersion: $version
+          DefaultLocale: en-US
+          ManifestType: version
+          ManifestVersion: 1.6.0
+          "@ | Set-Content "$dir/Provix.Provix.yaml"
+
+          @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+          PackageIdentifier: Provix.Provix
+          PackageVersion: $version
+          MinimumOSVersion: 10.0.0.0
+          InstallerType: inno
+          Scope: user
+          InstallModes:
+          - interactive
+          - silent
+          - silentWithProgress
+          UpgradeBehavior: install
+          AppsAndFeaturesEntries:
+          - DisplayName: Provix version $version
+            ProductCode: 8F4E2A91-6C3D-4B8E-9F1A-2D7E5B4C9013_is1
+          Installers:
+          - Architecture: x64
+            InstallerUrl: $url
+            InstallerSha256: $sha
+          ManifestType: installer
+          ManifestVersion: 1.6.0
+          "@ | Set-Content "$dir/Provix.Provix.installer.yaml"
+
+          Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.en-US.yaml" "$dir/Provix.Provix.locale.en-US.yaml"
+          Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.ru-RU.yaml" "$dir/Provix.Provix.locale.ru-RU.yaml"
+          (Get-Content "$dir/Provix.Provix.locale.en-US.yaml" -Raw) -replace 'PackageVersion: .*', "PackageVersion: $version" -replace 'releases/tag/.*', "releases/tag/$version" | Set-Content "$dir/Provix.Provix.locale.en-US.yaml"
+          (Get-Content "$dir/Provix.Provix.locale.ru-RU.yaml" -Raw) -replace 'PackageVersion: .*', "PackageVersion: $version" -replace 'releases/tag/.*', "releases/tag/$version" | Set-Content "$dir/Provix.Provix.locale.ru-RU.yaml"
+
+      - name: Download WingetCreate
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod https://api.github.com/repos/microsoft/winget-create/releases/latest
+          $asset = $release.assets | Where-Object { $_.name -like 'wingetcreate*windows*x64*.zip' } | Select-Object -First 1
+          if (-not $asset) { throw "WingetCreate release asset not found" }
+          Invoke-WebRequest $asset.browser_download_url -OutFile wingetcreate.zip
+          Expand-Archive wingetcreate.zip -DestinationPath wingetcreate -Force
+
+      - name: Submit to WinGet community repo
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $exe = Get-ChildItem wingetcreate -Recurse -Filter WingetCreate.exe | Select-Object -First 1
+          if (-not $exe) { throw "WingetCreate.exe not found" }
+          & $exe.FullName submit "winget-generated/Provix.Provix/$version" `
+            --package-git-repo "https://github.com/${{ github.repository }}" `
+            --package-git-token "$env:GITHUB_TOKEN" `
+            --pull-request-to-https://github.com/microsoft/winget-pkgs

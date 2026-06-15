@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Patch Inno Setup version
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $content = Get-Content setup/Provix.iss -Raw
+          $content = $content -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`""
+          Set-Content setup/Provix.iss $content -NoNewline
+
+      - name: Publish app
+        run: dotnet publish FileExplorer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "setup\Provix.iss"
+
+      - name: Rename installer
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $src = "installer\Provix-Setup-$version.exe"
+          if (-not (Test-Path $src)) {
+            $legacy = Get-ChildItem installer\Provix-Setup-*.exe | Select-Object -First 1
+            if (-not $legacy) { throw "Installer not found" }
+            $src = $legacy.FullName
+          }
+          $dst = "installer\Provix-Setup-$version.exe"
+          if ($src -ne $dst) { Move-Item $src $dst -Force }
+          "installer_path=$dst" >> $env:GITHUB_OUTPUT
+        id: installer
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Provix ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: installer/Provix-Setup-${{ steps.version.outputs.version }}.exe
