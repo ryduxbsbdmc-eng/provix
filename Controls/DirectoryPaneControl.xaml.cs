@@ -44,6 +44,7 @@ public partial class DirectoryPaneControl : UserControl
     public event EventHandler<GitDirectoryEventArgs>? GitAmendRequested;
     public event EventHandler<GitDirectoryEventArgs>? GitHistoryRequested;
     public event EventHandler<GitDirectoryEventArgs>? GitBranchRequested;
+    public event RoutedEventHandler? AiExecuteQueryRequested;
 
     public DirectoryPaneControl()
     {
@@ -64,6 +65,8 @@ public partial class DirectoryPaneControl : UserControl
     public MenuItem GitAmendMenuItemControl => GitAmendMenuItem;
 
     public MenuItem GitHistoryMenuItemControl => GitHistoryMenuItem;
+
+    public MenuItem AiExecuteQueryMenuItemControl => AiExecuteQueryMenuItem;
 
     public Separator ExtractArchiveSeparatorControl => ExtractArchiveSeparator;
 
@@ -585,6 +588,9 @@ public partial class DirectoryPaneControl : UserControl
 
     private void ExtractArchiveMenuItem_Click(object sender, RoutedEventArgs e) =>
         ExtractArchiveRequested?.Invoke(sender, e);
+
+    private void AiExecuteQueryMenuItem_Click(object sender, RoutedEventArgs e) =>
+        AiExecuteQueryRequested?.Invoke(sender, e);
 
     private void GitInitMenuItem_Click(object sender, RoutedEventArgs e)
     {

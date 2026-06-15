@@ -917,6 +917,165 @@
                     </Border>
                 </Border>
 
+                <!-- AI prompt overlay -->
+                <Border x:Name="AiPromptOverlay"
+                        Grid.Row="0"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="300"
+                        Visibility="Collapsed"
+                        Background="Transparent"
+                        IsHitTestVisible="True">
+                    <Border x:Name="AiPromptPanel"
+                            Width="440"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            RenderTransformOrigin="0.5,0.5"
+                            Background="{DynamicResource GlassBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="18"
+                            SnapsToDevicePixels="True">
+                        <StackPanel Background="Transparent">
+                            <TextBlock x:Name="AiPromptTitleText"
+                                       Text="{loc:Loc UI_AiPromptTitle}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,8" />
+                            <TextBlock x:Name="AiPromptHintText"
+                                       Text="{loc:Loc UI_AiPromptHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12" />
+                            <TextBox x:Name="AiPromptTextBox"
+                                     Style="{DynamicResource AddressBarTextBoxStyle}"
+                                     MinHeight="72"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     KeyDown="AiPromptTextBox_KeyDown" />
+                            <TextBlock x:Name="AiPromptErrorText"
+                                       Foreground="{DynamicResource ErrorTextBrush}"
+                                       FontSize="11"
+                                       Margin="2,8,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="2"
+                                        x:Name="AiPromptCancelButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_Cancel}"
+                                        Click="AiPromptCancelButton_Click" />
+                                <Button Grid.Column="4"
+                                        x:Name="AiPromptSubmitButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_AiSubmit}"
+                                        Click="AiPromptSubmitButton_Click" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Border>
+
+                <!-- AI action preview overlay -->
+                <Border x:Name="AiPreviewOverlay"
+                        Grid.Row="0"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="310"
+                        Visibility="Collapsed"
+                        Background="Transparent"
+                        IsHitTestVisible="True">
+                    <Border x:Name="AiPreviewPanel"
+                            Width="520"
+                            MaxHeight="480"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            RenderTransformOrigin="0.5,0.5"
+                            Background="{DynamicResource GlassBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="18"
+                            SnapsToDevicePixels="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock x:Name="AiPreviewTitleText"
+                                       Grid.Row="0"
+                                       Text="{loc:Loc UI_AiPreviewTitle}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,8" />
+                            <TextBlock x:Name="AiPreviewHintText"
+                                       Grid.Row="1"
+                                       Text="{loc:Loc UI_AiPreviewHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12" />
+
+                            <Border Grid.Row="2"
+                                    Background="{DynamicResource PanelBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushDark}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Margin="0,0,0,12"
+                                    MinHeight="160"
+                                    MaxHeight="280">
+                                <ListBox x:Name="AiPreviewListBox"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         FontSize="12"
+                                         Padding="4" />
+                            </Border>
+
+                            <TextBlock x:Name="AiPreviewErrorText"
+                                       Grid.Row="3"
+                                       Foreground="{DynamicResource ErrorTextBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed"
+                                       Margin="0,0,0,8" />
+
+                            <Grid Grid.Row="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="2"
+                                        x:Name="AiPreviewCancelButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_Cancel}"
+                                        Click="AiPreviewCancelButton_Click" />
+                                <Button Grid.Column="4"
+                                        x:Name="AiPreviewConfirmButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_AiConfirm}"
+                                        Click="AiPreviewConfirmButton_Click" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Border>
+
                 <!-- Settings overlay -->
                 <Border x:Name="SettingsOverlay"
                         Grid.Row="0"
@@ -970,9 +1129,38 @@
                                        FontSize="12"
                                        Margin="0,0,0,6" />
                             <ComboBox x:Name="SettingsLanguageComboBox"
-                                      Margin="0,0,0,18"
+                                      Margin="0,0,0,14"
                                       DisplayMemberPath="DisplayName"
                                       SelectionChanged="SettingsLanguageComboBox_SelectionChanged" />
+
+                            <TextBlock x:Name="SettingsAiApiKeyLabel"
+                                       Text="{loc:Loc UI_AiOpenRouterApiKey}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <PasswordBox x:Name="SettingsAiApiKeyBox"
+                                         Margin="0,0,0,4"
+                                         Padding="10,6"
+                                         Background="{DynamicResource PanelBackgroundBrush}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         BorderBrush="{DynamicResource BorderBrushDark}"
+                                         BorderThickness="1"
+                                         PasswordChanged="SettingsAiApiKeyBox_PasswordChanged" />
+                            <TextBlock x:Name="SettingsAiApiKeyHint"
+                                       Text="{loc:Loc UI_AiApiKeyHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       Margin="0,0,0,14" />
+
+                            <TextBlock x:Name="SettingsAiModelLabel"
+                                       Text="{loc:Loc UI_AiPreferredModel}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <TextBox x:Name="SettingsAiModelTextBox"
+                                     Style="{DynamicResource AddressBarTextBoxStyle}"
+                                     Margin="0,0,0,18"
+                                     LostFocus="SettingsAiModelTextBox_LostFocus" />
 
                             <Button x:Name="SettingsCloseButton"
                                     Style="{StaticResource DialogActionButtonStyle}"
