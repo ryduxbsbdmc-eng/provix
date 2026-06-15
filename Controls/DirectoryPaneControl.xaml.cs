@@ -3,8 +3,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FileExplorer.Models;
+using FileExplorer.Services;
 
 namespace FileExplorer.Controls;
 
@@ -12,8 +15,8 @@ public partial class DirectoryPaneControl : UserControl
 {
     private const double MarqueeDragThreshold = 4;
 
-    private static readonly SolidColorBrush ActiveBorderBrush = new(Color.FromArgb(0xFF, 0x00, 0x78, 0xD7));
-    private static readonly SolidColorBrush InactiveBorderBrush = new(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
+    private Brush? _activeBorderBrush;
+    private Brush? _inactiveBorderBrush;
 
     private Point _marqueeStartPoint;
     private Point _dragStartPoint;
@@ -21,12 +24,6 @@ public partial class DirectoryPaneControl : UserControl
     private bool _marqueeActive;
     private bool _extendMarqueeSelection;
     private bool _dragPending;
-
-    static DirectoryPaneControl()
-    {
-        ActiveBorderBrush.Freeze();
-        InactiveBorderBrush.Freeze();
-    }
 
     public DirectoryPaneState? PaneState { get; set; }
 
@@ -56,8 +53,39 @@ public partial class DirectoryPaneControl : UserControl
 
     public Separator ExtractArchiveSeparatorControl => ExtractArchiveSeparator;
 
-    public void SetIsActive(bool isActive) =>
-        PaneChrome.BorderBrush = isActive ? ActiveBorderBrush : InactiveBorderBrush;
+    public void ResetThemeBrushes()
+    {
+        _activeBorderBrush = null;
+        _inactiveBorderBrush = null;
+    }
+
+    public void SetIsActive(bool isActive)
+    {
+        EnsurePaneBorderBrushes();
+        PaneChrome.BorderBrush = isActive ? _activeBorderBrush : _inactiveBorderBrush;
+    }
+
+    public void ApplyLocalization()
+    {
+        var loc = LocalizationManager.Instance;
+        NameColumn.Header = loc["UI_ColumnName"];
+        DateModifiedColumn.Header = loc["UI_ColumnDateModified"];
+        TypeColumn.Header = loc["UI_ColumnType"];
+        SizeColumn.Header = loc["UI_ColumnSize"];
+        ClosePaneButton.ToolTip = loc["UI_ClosePane"];
+    }
+
+    public void RefreshDateColumnDisplay() =>
+        FileList.Items.Refresh();
+
+    private void EnsurePaneBorderBrushes()
+    {
+        if (_activeBorderBrush is not null && _inactiveBorderBrush is not null)
+            return;
+
+        _activeBorderBrush = Application.Current.FindResource("SelectionBorderBrush") as Brush;
+        _inactiveBorderBrush = Application.Current.FindResource("PaneInactiveBorderBrush") as Brush;
+    }
 
     public void SetCloseButtonVisible(bool isVisible) =>
         ClosePaneButton.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
@@ -487,8 +515,50 @@ public partial class DirectoryPaneControl : UserControl
     private void FileList_MouseDoubleClick(object sender, MouseButtonEventArgs e) =>
         FileListMouseDoubleClick?.Invoke(sender, e);
 
-    private void FileList_ContextMenuOpening(object sender, ContextMenuEventArgs e) =>
+    private void FileList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        SelectItemUnderCursor(e.OriginalSource as DependencyObject);
+        FileList.Focus();
+
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            Dispatcher.BeginInvoke(ShowNativeShellContextMenu, DispatcherPriority.ApplicationIdle);
+        }
+    }
+
+    private void SelectItemUnderCursor(DependencyObject? source)
+    {
+        var clickedItem = FindListViewItem(source);
+
+        if (clickedItem?.DataContext is FileSystemEntry entry)
+        {
+            if (!FileList.SelectedItems.Contains(entry))
+            {
+                if (!IsExtendSelectionModifierPressed())
+                    FileList.SelectedItems.Clear();
+
+                FileList.SelectedItems.Add(entry);
+            }
+
+            clickedItem.Focus();
+            return;
+        }
+
+        if (IsEmptyListViewBackground(source) && !IsExtendSelectionModifierPressed())
+            FileList.SelectedItems.Clear();
+    }
+
+    private void FileList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            return;
+        }
+
         FileListContextMenuOpening?.Invoke(sender, e);
+    }
 
     private void NewFolderMenuItem_Click(object sender, RoutedEventArgs e) =>
         NewFolderRequested?.Invoke(sender, e);
@@ -501,4 +571,66 @@ public partial class DirectoryPaneControl : UserControl
 
     private void ExtractArchiveMenuItem_Click(object sender, RoutedEventArgs e) =>
         ExtractArchiveRequested?.Invoke(sender, e);
+
+    private void ShowWindowsMenuMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (FileList.ContextMenu is ContextMenu menu)
+            menu.IsOpen = false;
+
+        // Defer until the WPF context menu has fully closed; TrackPopupMenuEx is modal Win32 UI.
+        Dispatcher.BeginInvoke(ShowNativeShellContextMenu, DispatcherPriority.ApplicationIdle);
+    }
+
+    private void ShowNativeShellContextMenu()
+    {
+        try
+        {
+            var paths = GetContextMenuTargetPaths();
+            if (paths.Count == 0)
+                throw new InvalidOperationException("No items available for the Windows context menu.");
+
+            var mainWindow = Application.Current.MainWindow
+                ?? throw new InvalidOperationException("Application.Current.MainWindow is not available.");
+
+            var windowHelper = new WindowInteropHelper(mainWindow);
+            if (windowHelper.Handle == IntPtr.Zero)
+                windowHelper.EnsureHandle();
+
+            var hwnd = windowHelper.Handle;
+            if (hwnd == IntPtr.Zero)
+                throw new InvalidOperationException("Unable to obtain a valid MainWindow HWND.");
+
+            var point = FileList.PointToScreen(Mouse.GetPosition(FileList));
+
+            NativeShellContextMenuService.ShowContextMenu(
+                paths,
+                (int)point.X,
+                (int)point.Y,
+                hwnd,
+                mainWindow);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.ToString(), "Native Menu Error");
+        }
+    }
+
+    private List<string> GetContextMenuTargetPaths()
+    {
+        var selectedPaths = FileList.SelectedItems
+            .Cast<object>()
+            .OfType<FileSystemEntry>()
+            .Select(entry => entry.FullPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (selectedPaths.Count > 0)
+            return selectedPaths;
+
+        if (!string.IsNullOrWhiteSpace(PaneState?.CurrentPath))
+            return [PaneState.CurrentPath];
+
+        return [];
+    }
 }

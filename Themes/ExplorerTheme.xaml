@@ -1,41 +1,16 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Override WPF system selection colors so defaults never leak through -->
-    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#330078D7" />
-    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#330078D7" />
-    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="Transparent" />
-    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#F0F0F0" />
-
-    <!-- Shared palette -->
-    <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#B3121212" />
-    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#66181818" />
-    <SolidColorBrush x:Key="BorderBrushDark" Color="#33FFFFFF" />
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F0F0F0" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#B0B0B0" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#4DA3FF" />
-    <SolidColorBrush x:Key="HoverBrush" Color="#18FFFFFF" />
-    <SolidColorBrush x:Key="SelectionFillBrush" Color="#330078D7" />
-    <SolidColorBrush x:Key="SelectionFillHoverBrush" Color="#440078D7" />
-    <SolidColorBrush x:Key="SelectionFillInactiveBrush" Color="#220078D7" />
-    <SolidColorBrush x:Key="SelectionBorderBrush" Color="#0078D7" />
-    <SolidColorBrush x:Key="SelectionBorderInactiveBrush" Color="#660078D7" />
-    <SolidColorBrush x:Key="SelectionForegroundBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="SelectedBrush" Color="#330078D7" />
-    <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#44000000" />
-
     <!-- Address / search bar -->
     <Style x:Key="AddressBarTextBoxStyle" TargetType="TextBox">
-        <Setter Property="Background" Value="{StaticResource AddressBarBackgroundBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-        <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AddressBarBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="10,6" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="SelectionBrush" Value="{StaticResource SelectionBorderBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBorderBrush}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
@@ -55,7 +30,7 @@
     <!-- Pane splitters -->
     <Style x:Key="PaneSplitterStyle" TargetType="GridSplitter">
         <Setter Property="Width" Value="2" />
-        <Setter Property="Background" Value="#18000000" />
+        <Setter Property="Background" Value="{DynamicResource SplitterIdleBrush}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="VerticalAlignment" Value="Stretch" />
         <Setter Property="ResizeBehavior" Value="PreviousAndNext" />
@@ -63,7 +38,7 @@
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="#550078D7" />
+                <Setter Property="Background" Value="{DynamicResource SplitterHoverBrush}" />
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -72,17 +47,17 @@
     <Style TargetType="TreeView">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="Padding" Value="4" />
         <Setter Property="AlternationCount" Value="0" />
     </Style>
 
-    <!-- TreeView item: bright blue border + translucent fill when selected -->
+    <!-- TreeView item -->
     <Style x:Key="ExplorerTreeViewItemStyle"
            TargetType="TreeViewItem"
            BasedOn="{x:Null}">
         <Setter Property="OverridesDefaultStyle" Value="True" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Padding" Value="4,2" />
         <Setter Property="BorderThickness" Value="0" />
@@ -125,7 +100,7 @@
                                                         <Border Background="Transparent">
                                                             <Path x:Name="Arrow"
                                                                   Data="M 4 2 L 10 6 L 4 10 Z"
-                                                                  Fill="{StaticResource TextSecondaryBrush}"
+                                                                  Fill="{DynamicResource TextSecondaryBrush}"
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center" />
                                                         </Border>
@@ -166,14 +141,14 @@
                         <Trigger Property="IsSelected" Value="False">
                             <Setter TargetName="ItemBorder" Property="Background" Value="Transparent" />
                             <Setter TargetName="ItemBorder" Property="BorderBrush" Value="Transparent" />
-                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                         </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsMouseOver" Value="True" />
                                 <Condition Property="IsSelected" Value="False" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource HoverBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource HoverBrush}" />
                             <Setter TargetName="ItemBorder" Property="BorderBrush" Value="Transparent" />
                         </MultiTrigger>
                         <MultiTrigger>
@@ -181,9 +156,9 @@
                                 <Condition Property="IsSelected" Value="True" />
                                 <Condition Property="IsSelectionActive" Value="False" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource SelectionFillInactiveBrush}" />
-                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource SelectionBorderInactiveBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource SelectionForegroundBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SelectionFillInactiveBrush}" />
+                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource SelectionBorderInactiveBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
@@ -191,9 +166,9 @@
                                 <Condition Property="IsSelectionActive" Value="True" />
                                 <Condition Property="IsMouseOver" Value="False" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource SelectionFillBrush}" />
-                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource SelectionBorderBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource SelectionForegroundBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SelectionFillBrush}" />
+                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource SelectionBorderBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
@@ -201,9 +176,9 @@
                                 <Condition Property="IsSelectionActive" Value="True" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource SelectionFillHoverBrush}" />
-                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource SelectionBorderBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource SelectionForegroundBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SelectionFillHoverBrush}" />
+                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource SelectionBorderBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -211,12 +186,12 @@
         </Setter>
     </Style>
 
-    <!-- ListView item: bright blue border + translucent fill when selected -->
+    <!-- ListView item -->
     <Style x:Key="ExplorerListViewItemStyle" TargetType="ListViewItem">
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Padding" Value="8,6" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -237,14 +212,14 @@
                         <Trigger Property="IsSelected" Value="False">
                             <Setter TargetName="ItemBorder" Property="Background" Value="Transparent" />
                             <Setter TargetName="ItemBorder" Property="BorderBrush" Value="Transparent" />
-                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                         </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsMouseOver" Value="True" />
                                 <Condition Property="IsSelected" Value="False" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource HoverBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource HoverBrush}" />
                             <Setter TargetName="ItemBorder" Property="BorderBrush" Value="Transparent" />
                         </MultiTrigger>
                         <MultiTrigger>
@@ -252,18 +227,18 @@
                                 <Condition Property="IsSelected" Value="True" />
                                 <Condition Property="IsMouseOver" Value="False" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource SelectionFillBrush}" />
-                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource SelectionBorderBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource SelectionForegroundBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SelectionFillBrush}" />
+                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource SelectionBorderBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsSelected" Value="True" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource SelectionFillHoverBrush}" />
-                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{StaticResource SelectionBorderBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource SelectionForegroundBrush}" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SelectionFillHoverBrush}" />
+                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource SelectionBorderBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -275,7 +250,7 @@
     <Style TargetType="ListView">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource ExplorerListViewItemStyle}" />
     </Style>
 

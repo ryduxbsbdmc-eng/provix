@@ -1,0 +1,69 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- System selection overrides -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#330078D7" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#330078D7" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="Transparent" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#F0F0F0" />
+
+    <!-- Core palette -->
+    <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#B3121212" />
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#66181818" />
+    <SolidColorBrush x:Key="BorderBrushDark" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#B0B0B0" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#4DA3FF" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#18FFFFFF" />
+    <SolidColorBrush x:Key="SelectionFillBrush" Color="#330078D7" />
+    <SolidColorBrush x:Key="SelectionFillHoverBrush" Color="#440078D7" />
+    <SolidColorBrush x:Key="SelectionFillInactiveBrush" Color="#220078D7" />
+    <SolidColorBrush x:Key="SelectionBorderBrush" Color="#0078D7" />
+    <SolidColorBrush x:Key="SelectionBorderInactiveBrush" Color="#660078D7" />
+    <SolidColorBrush x:Key="SelectionForegroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SelectedBrush" Color="#330078D7" />
+    <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#44000000" />
+
+    <!-- Settings / form controls -->
+    <SolidColorBrush x:Key="AppControlBackground" Color="#44000000" />
+    <SolidColorBrush x:Key="AppTextForeground" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="AppControlBorderBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="AppControlHoverBackground" Color="#18FFFFFF" />
+    <SolidColorBrush x:Key="AppControlPressedBackground" Color="#2AFFFFFF" />
+    <SolidColorBrush x:Key="AppPopupBackground" Color="#F0181818" />
+    <SolidColorBrush x:Key="AppPopupBorderBrush" Color="#33FFFFFF" />
+
+    <!-- Chrome / overlay accents -->
+    <SolidColorBrush x:Key="CloseHoverBrush" Color="#E81123" />
+    <SolidColorBrush x:Key="DimOverlayBrush" Color="#A6000000" />
+    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#33000000" />
+    <SolidColorBrush x:Key="OverlayHeaderBrush" Color="#44000000" />
+    <SolidColorBrush x:Key="ButtonChromeBrush" Color="#33000000" />
+    <SolidColorBrush x:Key="ButtonPressedBrush" Color="#45FFFFFF" />
+    <SolidColorBrush x:Key="DialogButtonBrush" Color="#2AFFFFFF" />
+    <SolidColorBrush x:Key="DialogButtonHoverBrush" Color="#45FFFFFF" />
+    <SolidColorBrush x:Key="DialogDangerBrush" Color="#55E81123" />
+    <SolidColorBrush x:Key="DialogDangerHoverBrush" Color="#88E81123" />
+    <SolidColorBrush x:Key="DialogDangerPressedBrush" Color="#C50F1F" />
+    <SolidColorBrush x:Key="ContextMenuBackgroundBrush" Color="#F0181818" />
+    <SolidColorBrush x:Key="SeparatorBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="ColumnHeaderBackgroundBrush" Color="#22000000" />
+    <SolidColorBrush x:Key="ScrollBarThumbBrush" Color="#55FFFFFF" />
+    <SolidColorBrush x:Key="EditorBackgroundBrush" Color="#33000000" />
+    <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#22000000" />
+    <SolidColorBrush x:Key="ErrorTextBrush" Color="#FFFF6B6B" />
+    <SolidColorBrush x:Key="PaneInactiveBorderBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="SplitterIdleBrush" Color="#18000000" />
+    <SolidColorBrush x:Key="SplitterHoverBrush" Color="#550078D7" />
+    <SolidColorBrush x:Key="ShadowColor" Color="Black" />
+
+    <!-- Animation / selection color tokens -->
+    <Color x:Key="TransparentFillColor">#00000000</Color>
+    <Color x:Key="HoverFillColor">#18FFFFFF</Color>
+    <Color x:Key="SelectionFillColor">#330078D7</Color>
+    <Color x:Key="SelectionFillHoverColor">#440078D7</Color>
+    <Color x:Key="SelectionBorderColor">#0078D7</Color>
+
+</ResourceDictionary>

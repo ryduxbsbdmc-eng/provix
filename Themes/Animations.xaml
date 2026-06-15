@@ -12,12 +12,8 @@
     <QuadraticEase x:Key="EaseOutQuadratic" EasingMode="EaseOut" />
     <CubicEase x:Key="EaseOutCubic" EasingMode="EaseOut" />
 
-    <!-- Selection animation colors (shared with ExplorerTheme item templates) -->
+    <!-- Selection animation colors (provided by active theme dictionary) -->
     <Color x:Key="TransparentFillColor">#00000000</Color>
-    <Color x:Key="HoverFillColor">#18FFFFFF</Color>
-    <Color x:Key="SelectionFillColor">#330078D7</Color>
-    <Color x:Key="SelectionFillHoverColor">#440078D7</Color>
-    <Color x:Key="SelectionBorderColor">#0078D7</Color>
 
     <!-- Pane add: width expand via LayoutTransform scale + fade -->
     <Storyboard x:Key="PaneEntranceStoryboard">

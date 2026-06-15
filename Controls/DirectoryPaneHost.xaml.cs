@@ -21,6 +21,12 @@ public partial class DirectoryPaneHost : UserControl
 
     public void ClearPanes()
     {
+        foreach (var (pane, wrapper) in _paneWrappers)
+        {
+            if (wrapper is Panel panel && panel.Children.Contains(pane))
+                panel.Children.Remove(pane);
+        }
+
         _paneWrappers.Clear();
         PaneHostGrid.Children.Clear();
         PaneHostGrid.ColumnDefinitions.Clear();
@@ -28,6 +34,8 @@ public partial class DirectoryPaneHost : UserControl
 
     public FrameworkElement AddPaneColumn(DirectoryPaneControl pane, bool addSplitterAfter, bool prepareEntrance = false)
     {
+        DetachFromParent(pane);
+
         var columnIndex = PaneHostGrid.ColumnDefinitions.Count;
 
         PaneHostGrid.ColumnDefinitions.Add(new ColumnDefinition
@@ -71,5 +79,21 @@ public partial class DirectoryPaneHost : UserControl
         PaneHostGrid.Children.Add(splitter);
 
         return wrapper;
+    }
+
+    private static void DetachFromParent(UIElement element)
+    {
+        switch (LogicalTreeHelper.GetParent(element))
+        {
+            case Panel panel when panel.Children.Contains(element):
+                panel.Children.Remove(element);
+                break;
+            case Decorator decorator when ReferenceEquals(decorator.Child, element):
+                decorator.Child = null;
+                break;
+            case ContentControl contentControl when ReferenceEquals(contentControl.Content, element):
+                contentControl.Content = null;
+                break;
+        }
     }
 }
