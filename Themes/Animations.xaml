@@ -3,8 +3,10 @@
 
     <!-- Durations -->
     <Duration x:Key="SelectionTransitionDuration">0:0:0.15</Duration>
+    <Duration x:Key="QuickTransitionDuration">0:0:0.16</Duration>
     <Duration x:Key="OverlayTransitionDuration">0:0:0.22</Duration>
     <Duration x:Key="PaneTransitionDuration">0:0:0.25</Duration>
+    <Duration x:Key="TerminalTransitionDuration">0:0:0.18</Duration>
     <Duration x:Key="DimFadeInDuration">0:0:0.22</Duration>
     <Duration x:Key="DimFadeOutDuration">0:0:0.18</Duration>
 
@@ -14,6 +16,111 @@
 
     <!-- Selection animation colors (provided by active theme dictionary) -->
     <Color x:Key="TransparentFillColor">#00000000</Color>
+
+    <!-- Generic fade (shared by list refresh, indicators, panels) -->
+    <Storyboard x:Key="FadeInStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         From="0"
+                         To="1"
+                         Duration="{StaticResource QuickTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <Storyboard x:Key="FadeOutStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         To="0"
+                         Duration="{StaticResource QuickTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutQuadratic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <!-- Looping pulse for busy indicators -->
+    <Storyboard x:Key="PulseLoopStoryboard"
+                RepeatBehavior="Forever"
+                AutoReverse="True">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         From="0.35"
+                         To="1"
+                         Duration="0:0:0.85">
+            <DoubleAnimation.EasingFunction>
+                <SineEase EasingMode="EaseInOut" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <!-- Button micro-interactions (x:Shared=False — one instance per button) -->
+    <Storyboard x:Key="ButtonHoverInStoryboard" x:Shared="False">
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                         To="1.06"
+                         Duration="0:0:0.1">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                         To="1.06"
+                         Duration="0:0:0.1">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <Storyboard x:Key="ButtonHoverOutStoryboard" x:Shared="False">
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                         To="1"
+                         Duration="0:0:0.12">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutQuadratic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                         To="1"
+                         Duration="0:0:0.12">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutQuadratic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <Storyboard x:Key="ButtonPressInStoryboard" x:Shared="False">
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                         To="0.94"
+                         Duration="0:0:0.06" />
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                         To="0.94"
+                         Duration="0:0:0.06" />
+    </Storyboard>
+
+    <Storyboard x:Key="ButtonPressOutStoryboard" x:Shared="False">
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                         To="1.06"
+                         Duration="0:0:0.1">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetName="Root"
+                         Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                         To="1.06"
+                         Duration="0:0:0.1">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
 
     <!-- Pane add: width expand via LayoutTransform scale + fade -->
     <Storyboard x:Key="PaneEntranceStoryboard">
@@ -49,6 +156,28 @@
                          Duration="{StaticResource PaneTransitionDuration}">
             <DoubleAnimation.EasingFunction>
                 <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <!-- Terminal dock: fade synced with row layout -->
+    <Storyboard x:Key="TerminalEntranceStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         From="0"
+                         To="1"
+                         Duration="{StaticResource TerminalTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutCubic" />
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <Storyboard x:Key="TerminalExitStoryboard">
+        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                         To="0"
+                         Duration="{StaticResource TerminalTransitionDuration}">
+            <DoubleAnimation.EasingFunction>
+                <StaticResource ResourceKey="EaseOutQuadratic" />
             </DoubleAnimation.EasingFunction>
         </DoubleAnimation>
     </Storyboard>

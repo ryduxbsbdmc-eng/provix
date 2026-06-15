@@ -35,11 +35,27 @@
                         <Border x:Name="Root"
                                 Background="{TemplateBinding Background}"
                                 CornerRadius="6"
-                                SnapsToDevicePixels="True">
+                                SnapsToDevicePixels="True"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="MouseEnter">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonHoverInStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="MouseLeave">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonHoverOutStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="PreviewMouseDown">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonPressInStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="PreviewMouseUp">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonPressOutStoryboard}" />
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="{DynamicResource HoverBrush}" />
                             </Trigger>
@@ -73,11 +89,27 @@
                         <Border x:Name="Root"
                                 Background="{TemplateBinding Background}"
                                 CornerRadius="6"
-                                Padding="{TemplateBinding Padding}">
+                                Padding="{TemplateBinding Padding}"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="MouseEnter">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonHoverInStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="MouseLeave">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonHoverOutStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="PreviewMouseDown">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonPressInStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="PreviewMouseUp">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonPressOutStoryboard}" />
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="{DynamicResource DialogButtonHoverBrush}" />
                             </Trigger>
@@ -195,11 +227,27 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Root"
                                 Background="{TemplateBinding Background}"
-                                SnapsToDevicePixels="True">
+                                SnapsToDevicePixels="True"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="MouseEnter">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonHoverInStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="MouseLeave">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonHoverOutStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="PreviewMouseDown">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonPressInStoryboard}" />
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="PreviewMouseUp">
+                                <BeginStoryboard Storyboard="{StaticResource ButtonPressOutStoryboard}" />
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="{DynamicResource HoverBrush}" />
                             </Trigger>
@@ -498,6 +546,7 @@
             <Grid Grid.Row="1"
                   Grid.RowSpan="2"
                   x:Name="MainChromeHost"
+                  ClipToBounds="True"
                   Margin="10,6,10,8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
@@ -511,7 +560,8 @@
                 </Grid.ColumnDefinitions>
 
                     <!-- Navigation tree -->
-                    <Border Grid.Row="0"
+                    <Border x:Name="NavigationPanel"
+                            Grid.Row="0"
                             Grid.Column="0"
                             Background="{DynamicResource PanelBackgroundBrush}"
                             BorderBrush="{DynamicResource BorderBrushDark}"
@@ -842,6 +892,7 @@
                         Background="Transparent"
                         IsHitTestVisible="True">
                     <Border Width="360"
+                            x:Name="NamePromptPanel"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Center"
                             Background="{DynamicResource GlassBackgroundBrush}"
@@ -849,6 +900,7 @@
                             BorderThickness="1"
                             CornerRadius="10"
                             Padding="18"
+                            RenderTransformOrigin="0.5,0.5"
                             SnapsToDevicePixels="True">
                         <StackPanel Background="Transparent">
                             <TextBlock x:Name="NamePromptTitleText"

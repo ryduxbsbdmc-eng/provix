@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using FileExplorer.Helpers;
 using FileExplorer.Models;
 using FileExplorer.Services;
 
@@ -94,6 +95,9 @@ public partial class DirectoryPaneControl : UserControl
 
     public void RefreshDateColumnDisplay() =>
         FileList.Items.Refresh();
+
+    public void PlayListRefreshAnimation() =>
+        UiAnimationHelper.FadeIn(FileList);
 
     private void EnsurePaneBorderBrushes()
     {
@@ -626,8 +630,13 @@ public partial class DirectoryPaneControl : UserControl
 
     public void UpdateGitStatus(bool isRepo, string branch, int changeCount)
     {
+        var wasVisible = GitStatusBar.Visibility == Visibility.Visible;
         GitStatusBar.Visibility = isRepo ? Visibility.Visible : Visibility.Collapsed;
-        if (!isRepo) return;
+        if (!isRepo)
+            return;
+
+        if (!wasVisible)
+            UiAnimationHelper.FadeIn(GitStatusBar);
 
         GitBranchText.Text = string.IsNullOrEmpty(branch) ? "DETACHED" : branch;
         var loc = LocalizationManager.Instance;
