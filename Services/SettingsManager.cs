@@ -130,6 +130,62 @@ public sealed class SettingsManager
         SettingChanged?.Invoke(this, nameof(AppSettings.ScrollSensitivity));
     }
 
+    public void UpdateFileIconStyle(FileIconStyle iconStyle)
+    {
+        if (Current.FileIconStyle == iconStyle)
+            return;
+
+        Current.FileIconStyle = iconStyle;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.FileIconStyle));
+    }
+
+    public void UpdateCustomIconPackPath(string path)
+    {
+        var normalized = path.Trim();
+        if (string.Equals(Current.CustomIconPackPath, normalized, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Current.CustomIconPackPath = normalized;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.CustomIconPackPath));
+    }
+
+    public void UpdateCustomFontPath(string path)
+    {
+        var normalized = path.Trim();
+        if (string.Equals(Current.CustomFontPath, normalized, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Current.CustomFontPath = normalized;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.CustomFontPath));
+    }
+
+    public void UpdateUiFontId(string fontId)
+    {
+        var normalized = string.IsNullOrWhiteSpace(fontId)
+            ? UiFontIds.Default
+            : fontId.Trim().ToLowerInvariant();
+
+        if (string.Equals(Current.UiFontId, normalized, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Current.UiFontId = normalized;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.UiFontId));
+    }
+
+    public void UpdateUseBuiltInMediaViewer(bool enabled)
+    {
+        if (Current.UseBuiltInMediaViewer == enabled)
+            return;
+
+        Current.UseBuiltInMediaViewer = enabled;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.UseBuiltInMediaViewer));
+    }
+
     public void UpdateTerminalPreferences(double panelHeight, bool isOpen)
     {
         panelHeight = Math.Clamp(panelHeight, MinTerminalPanelHeight, MaxTerminalPanelHeight);
@@ -230,5 +286,12 @@ public sealed class SettingsManager
         settings.WindowState = Math.Clamp(settings.WindowState, 0, 2);
 
         settings.NavigationHistory ??= [];
+
+        if (!Enum.IsDefined(settings.FileIconStyle))
+            settings.FileIconStyle = FileIconStyle.Windows;
+
+        settings.CustomIconPackPath ??= string.Empty;
+        settings.CustomFontPath ??= string.Empty;
+        settings.UiFontId = BuiltInFontCatalog.NormalizeFontId(settings.UiFontId, settings.CustomFontPath);
     }
 }

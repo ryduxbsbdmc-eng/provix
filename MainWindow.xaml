@@ -4,6 +4,7 @@
         xmlns:controls="clr-namespace:FileExplorer.Controls"
         xmlns:loc="clr-namespace:FileExplorer.Markup"
         xmlns:helpers="clr-namespace:FileExplorer.Helpers"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         x:Name="RootWindow"
         Title="provix"
         Width="1100"
@@ -73,6 +74,46 @@
         </Style>
 
         <!-- Address / search bar style is in ExplorerTheme.xaml -->
+
+        <!-- Settings tab buttons -->
+        <Style x:Key="SettingsTabButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushDark}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource DialogButtonHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="selected">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SelectionFillBrush}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource SelectionBorderBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <!-- Dialog / overlay action buttons -->
         <Style x:Key="DialogActionButtonStyle" TargetType="Button">
@@ -1003,6 +1044,124 @@
                     </Border>
                 </Border>
 
+                <!-- Media viewer overlay -->
+                <Border x:Name="MediaViewerOverlay"
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="295"
+                        Visibility="Collapsed"
+                        Background="#D9000000"
+                        IsHitTestVisible="True"
+                        MouseLeftButtonDown="MediaViewerOverlay_MouseLeftButtonDown">
+                    <Border x:Name="MediaViewerPanel"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            RenderTransformOrigin="0.5,0.5"
+                            Background="{DynamicResource ModalPanelBackgroundBrush}"
+                            CornerRadius="8"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1"
+                            MouseLeftButtonDown="MediaViewerPanel_MouseLeftButtonDown">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0"
+                                    Background="{DynamicResource OverlayHeaderBrush}"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="10,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="&#xE714;"
+                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="16"
+                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0" />
+                                        <TextBlock x:Name="MediaViewerFileNameText"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            Style="{StaticResource EditorActionButtonStyle}"
+                                            x:Name="MediaViewerCloseButton"
+                                            Content="{loc:Loc UI_Close}"
+                                            Click="MediaViewerCloseButton_Click" />
+                                </Grid>
+                            </Border>
+
+                            <Grid x:Name="MediaViewerContentGrid" Grid.Row="1" Margin="0">
+                                <Border x:Name="MediaViewerImageHost"
+                                        Visibility="Collapsed"
+                                        Background="#000000"
+                                        CornerRadius="0">
+                                    <Image x:Name="MediaViewerImage"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                </Border>
+
+                                <Grid x:Name="MediaViewerVideoHost" Visibility="Collapsed">
+                                    <MediaElement x:Name="MediaViewerPlayer"
+                                                  LoadedBehavior="Manual"
+                                                  UnloadedBehavior="Stop"
+                                                  Stretch="Uniform"
+                                                  ScrubbingEnabled="True"
+                                                  MediaOpened="MediaViewerPlayer_MediaOpened"
+                                                  MediaEnded="MediaViewerPlayer_MediaEnded"
+                                                  MediaFailed="MediaViewerPlayer_MediaFailed" />
+                                    <wv2:WebView2 x:Name="MediaViewerWebPlayer"
+                                                  Visibility="Collapsed"
+                                                  DefaultBackgroundColor="#0B0B0B" />
+                                </Grid>
+                            </Grid>
+
+                            <StackPanel x:Name="MediaViewerControlsPanel"
+                                        Grid.Row="2"
+                                        Visibility="Collapsed"
+                                        Margin="12,0,12,8">
+                                <Slider x:Name="MediaViewerPositionSlider"
+                                        Style="{StaticResource ExplorerSliderStyle}"
+                                        Minimum="0"
+                                        Maximum="1"
+                                        Margin="0,0,0,8"
+                                        Thumb.DragStarted="MediaViewerPositionSlider_DragStarted"
+                                        Thumb.DragCompleted="MediaViewerPositionSlider_DragCompleted" />
+                                <Grid>
+                                    <TextBlock x:Name="MediaViewerTimeText"
+                                               Text="0:00 / 0:00"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center" />
+                                    <Button x:Name="MediaViewerPlayPauseButton"
+                                            Style="{StaticResource EditorActionButtonStyle}"
+                                            HorizontalAlignment="Right"
+                                            Click="MediaViewerPlayPauseButton_Click" />
+                                </Grid>
+                            </StackPanel>
+
+                            <TextBlock x:Name="MediaViewerErrorText"
+                                       Grid.Row="3"
+                                       Foreground="#FFFF6B6B"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Margin="12,0,12,12"
+                                       Visibility="Collapsed" />
+                        </Grid>
+                    </Border>
+                </Border>
+
                 <!-- Custom name prompt -->
                 <Border x:Name="NamePromptOverlay"
                         Grid.Row="0"
@@ -1447,7 +1606,7 @@
                         MouseLeftButtonDown="SettingsOverlay_MouseLeftButtonDown">
                     <Border x:Name="SettingsPanel"
                             Width="420"
-                            MaxHeight="520"
+                            MaxHeight="580"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Center"
                             RenderTransformOrigin="0.5,0.5"
@@ -1468,18 +1627,21 @@
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        FontSize="14"
                                        FontWeight="SemiBold"
-                                       Margin="0,0,0,16" />
+                                       Margin="0,0,0,12" />
 
-                            <TextBlock x:Name="SettingsThemeLabel"
-                                       Text="{loc:Loc UI_Theme}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="12"
-                                       Margin="0,0,0,6" />
-                            <ComboBox x:Name="SettingsThemeComboBox"
-                                      Margin="0,0,0,14"
-                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
-                                      SelectionChanged="SettingsThemeComboBox_SelectionChanged" />
+                            <StackPanel x:Name="SettingsTabStrip"
+                                        Orientation="Horizontal"
+                                        Margin="0,0,0,14">
+                                <Button x:Name="SettingsGeneralTabButton"
+                                        Style="{StaticResource SettingsTabButtonStyle}"
+                                        Tag="selected"
+                                        Click="SettingsGeneralTabButton_Click" />
+                                <Button x:Name="SettingsCustomizationTabButton"
+                                        Style="{StaticResource SettingsTabButtonStyle}"
+                                        Click="SettingsCustomizationTabButton_Click" />
+                            </StackPanel>
 
+                            <StackPanel x:Name="SettingsGeneralPanel">
                             <TextBlock x:Name="SettingsTimeFormatLabel"
                                        Text="{loc:Loc UI_TimeFormat}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
@@ -1492,6 +1654,19 @@
                                       Checked="SettingsTimeFormatCheckBox_Changed"
                                       Unchecked="SettingsTimeFormatCheckBox_Changed" />
 
+                            <CheckBox x:Name="SettingsUseBuiltInMediaViewerCheckBox"
+                                      Content="{loc:Loc UI_UseBuiltInMediaViewer}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      Margin="0,0,0,6"
+                                      Checked="SettingsUseBuiltInMediaViewerCheckBox_Changed"
+                                      Unchecked="SettingsUseBuiltInMediaViewerCheckBox_Changed" />
+                            <TextBlock x:Name="SettingsUseBuiltInMediaViewerHint"
+                                       Text="{loc:Loc UI_UseBuiltInMediaViewerHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,14" />
+
                             <TextBlock x:Name="SettingsLanguageLabel"
                                        Text="{loc:Loc UI_Language}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
@@ -1502,6 +1677,130 @@
                                       Background="{DynamicResource OpaqueInputBackgroundBrush}"
                                       DisplayMemberPath="DisplayName"
                                       SelectionChanged="SettingsLanguageComboBox_SelectionChanged" />
+
+                            <TextBlock x:Name="SettingsAiApiKeyLabel"
+                                       Text="{loc:Loc UI_AiOpenRouterApiKey}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <Border Margin="0,0,0,4"
+                                    Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushDark}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    SnapsToDevicePixels="True"
+                                    UseLayoutRounding="True">
+                                <TextBox x:Name="SettingsAiApiKeyBox"
+                                         Padding="10,6"
+                                         Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                         BorderThickness="0"
+                                         TextChanged="SettingsAiApiKeyBox_TextChanged" />
+                            </Border>
+                            <TextBlock x:Name="SettingsAiApiKeyHint"
+                                       Text="{loc:Loc UI_AiApiKeyHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       Margin="0,0,0,14" />
+
+                            <TextBlock x:Name="SettingsAiModelLabel"
+                                       Text="{loc:Loc UI_AiPreferredModel}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <TextBox x:Name="SettingsAiModelTextBox"
+                                     Style="{StaticResource AddressBarTextBoxStyle}"
+                                     Margin="0,0,0,0"
+                                     LostFocus="SettingsAiModelTextBox_LostFocus" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="SettingsCustomizationPanel"
+                                        Visibility="Collapsed">
+                            <TextBlock x:Name="SettingsThemeLabel"
+                                       Text="{loc:Loc UI_Theme}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <ComboBox x:Name="SettingsThemeComboBox"
+                                      Margin="0,0,0,14"
+                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                      SelectionChanged="SettingsThemeComboBox_SelectionChanged" />
+
+                            <TextBlock x:Name="SettingsCustomFontLabel"
+                                       Text="{loc:Loc UI_Font}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <ComboBox x:Name="SettingsFontComboBox"
+                                      Margin="0,0,0,8"
+                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                      SelectionChanged="SettingsFontComboBox_SelectionChanged" />
+                            <StackPanel x:Name="SettingsCustomFontPanel"
+                                        Visibility="Collapsed"
+                                        Margin="0,0,0,14">
+                                <TextBox x:Name="SettingsCustomFontPathBox"
+                                         Style="{StaticResource AddressBarTextBoxStyle}"
+                                         IsReadOnly="True"
+                                         Margin="0,0,0,8" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button x:Name="SettingsBrowseFontButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,0"
+                                            Click="SettingsBrowseFontButton_Click" />
+                                    <Button x:Name="SettingsClearFontButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Click="SettingsClearFontButton_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="SettingsCustomFontHint"
+                                           Text="{loc:Loc UI_CustomFontHint}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <TextBlock x:Name="SettingsIconStyleLabel"
+                                       Text="{loc:Loc UI_IconStyle}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <ComboBox x:Name="SettingsIconStyleComboBox"
+                                      Margin="0,0,0,8"
+                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                      SelectionChanged="SettingsIconStyleComboBox_SelectionChanged" />
+
+                            <StackPanel x:Name="SettingsCustomIconPackPanel"
+                                        Visibility="Collapsed"
+                                        Margin="0,0,0,14">
+                                <TextBlock x:Name="SettingsCustomIconPackLabel"
+                                           Text="{loc:Loc UI_CustomIconPack}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           Margin="0,0,0,6" />
+                                <TextBox x:Name="SettingsCustomIconPackPathBox"
+                                         Style="{StaticResource AddressBarTextBoxStyle}"
+                                         IsReadOnly="True"
+                                         Margin="0,0,0,8" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="SettingsBrowseIconPackButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,0"
+                                            Click="SettingsBrowseIconPackButton_Click" />
+                                    <Button x:Name="SettingsClearIconPackButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,0"
+                                            Click="SettingsClearIconPackButton_Click" />
+                                    <Button x:Name="SettingsEditIconPackButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Click="SettingsEditIconPackButton_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="SettingsCustomIconPackHint"
+                                           Text="{loc:Loc UI_CustomIconPackHint}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0" />
+                            </StackPanel>
 
                             <TextBlock x:Name="SettingsScrollSensitivityLabel"
                                        Text="{loc:Loc UI_ScrollSensitivity}"
@@ -1570,50 +1869,233 @@
                                        Text="{loc:Loc UI_ScrollSensitivityHint}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="10"
-                                       Margin="0,0,0,14" />
+                                       Margin="0,0,0,0" />
 
-                            <TextBlock x:Name="SettingsAiApiKeyLabel"
-                                       Text="{loc:Loc UI_AiOpenRouterApiKey}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="12"
-                                       Margin="0,0,0,6" />
-                            <Border Margin="0,0,0,4"
-                                    Background="{DynamicResource OpaqueInputBackgroundBrush}"
-                                    BorderBrush="{DynamicResource BorderBrushDark}"
-                                    BorderThickness="1"
-                                    CornerRadius="6"
-                                    SnapsToDevicePixels="True"
-                                    UseLayoutRounding="True">
-                                <TextBox x:Name="SettingsAiApiKeyBox"
-                                         Padding="10,6"
-                                         Background="{DynamicResource OpaqueInputBackgroundBrush}"
-                                         Foreground="{DynamicResource TextPrimaryBrush}"
-                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                         BorderThickness="0"
-                                         TextChanged="SettingsAiApiKeyBox_TextChanged" />
-                            </Border>
-                            <TextBlock x:Name="SettingsAiApiKeyHint"
-                                       Text="{loc:Loc UI_AiApiKeyHint}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="10"
-                                       Margin="0,0,0,14" />
-
-                            <TextBlock x:Name="SettingsAiModelLabel"
-                                       Text="{loc:Loc UI_AiPreferredModel}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="12"
-                                       Margin="0,0,0,6" />
-                            <TextBox x:Name="SettingsAiModelTextBox"
-                                     Style="{DynamicResource AddressBarTextBoxStyle}"
-                                     Margin="0,0,0,18"
-                                     LostFocus="SettingsAiModelTextBox_LostFocus" />
+                            </StackPanel>
 
                             <Button x:Name="SettingsCloseButton"
                                     Style="{StaticResource DialogActionButtonStyle}"
                                     Content="{loc:Loc UI_Close}"
                                     HorizontalAlignment="Right"
+                                    Margin="0,18,0,0"
                                     Click="SettingsCloseButton_Click" />
                         </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Border>
+
+                <!-- Icon pack editor -->
+                <Border x:Name="IconPackEditorOverlay"
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="410"
+                        Visibility="Collapsed"
+                        Background="#D9000000"
+                        IsHitTestVisible="True"
+                        SnapsToDevicePixels="True"
+                        UseLayoutRounding="True"
+                        MouseLeftButtonDown="IconPackEditorOverlay_MouseLeftButtonDown">
+                    <Border x:Name="IconPackEditorPanel"
+                            Width="560"
+                            MaxHeight="640"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            RenderTransformOrigin="0.5,0.5"
+                            Background="{DynamicResource AppPopupBackground}"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="18"
+                            SnapsToDevicePixels="True"
+                            UseLayoutRounding="True"
+                            MouseLeftButtonDown="IconPackEditorPanel_MouseLeftButtonDown">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      helpers:SmoothScrollHelper.IsEnabled="True">
+                            <StackPanel>
+                                <TextBlock x:Name="IconPackEditorTitleText"
+                                           Text="{loc:Loc UI_IconPackEditorTitle}"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,12" />
+
+                                <TextBlock x:Name="IconPackNameLabel"
+                                           Text="{loc:Loc UI_IconPackName}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11"
+                                           Margin="0,0,0,4" />
+                                <TextBox x:Name="IconPackNameTextBox"
+                                         Style="{StaticResource AddressBarTextBoxStyle}"
+                                         Margin="0,0,0,10"
+                                         TextChanged="IconPackNameTextBox_TextChanged" />
+
+                                <TextBlock x:Name="IconPackFolderLabel"
+                                           Text="{loc:Loc UI_IconPackFolder}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11"
+                                           Margin="0,0,0,4" />
+                                <TextBox x:Name="IconPackFolderTextBox"
+                                         Style="{StaticResource AddressBarTextBoxStyle}"
+                                         IsReadOnly="True"
+                                         Margin="0,0,0,8" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                    <Button x:Name="IconPackNewButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,0"
+                                            Click="IconPackNewButton_Click" />
+                                    <Button x:Name="IconPackOpenButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Click="IconPackOpenButton_Click" />
+                                </StackPanel>
+
+                                <TextBlock x:Name="IconPackSystemIconsLabel"
+                                           Text="{loc:Loc UI_IconPackSystemIcons}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,8" />
+
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="72" />
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="IconPackFolderIconLabel"
+                                               Grid.Column="0"
+                                               Text="{loc:Loc UI_IconPackFolderIcon}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               FontSize="12" />
+                                    <Image x:Name="IconPackFolderPreview"
+                                           Grid.Column="1"
+                                           Width="32"
+                                           Height="32"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <Button x:Name="IconPackChooseFolderIconButton"
+                                            Grid.Column="2"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            HorizontalAlignment="Left"
+                                            Margin="8,0,0,0"
+                                            Click="IconPackChooseFolderIconButton_Click" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="72" />
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="IconPackFileIconLabel"
+                                               Grid.Column="0"
+                                               Text="{loc:Loc UI_IconPackFileIcon}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               FontSize="12" />
+                                    <Image x:Name="IconPackFilePreview"
+                                           Grid.Column="1"
+                                           Width="32"
+                                           Height="32"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <Button x:Name="IconPackChooseFileIconButton"
+                                            Grid.Column="2"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            HorizontalAlignment="Left"
+                                            Margin="8,0,0,0"
+                                            Click="IconPackChooseFileIconButton_Click" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="72" />
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="IconPackDriveIconLabel"
+                                               Grid.Column="0"
+                                               Text="{loc:Loc UI_IconPackDriveIcon}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               FontSize="12" />
+                                    <Image x:Name="IconPackDrivePreview"
+                                           Grid.Column="1"
+                                           Width="32"
+                                           Height="32"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <Button x:Name="IconPackChooseDriveIconButton"
+                                            Grid.Column="2"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            HorizontalAlignment="Left"
+                                            Margin="8,0,0,0"
+                                            Click="IconPackChooseDriveIconButton_Click" />
+                                </Grid>
+
+                                <TextBlock x:Name="IconPackExtensionsLabel"
+                                           Text="{loc:Loc UI_IconPackExtensions}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,8" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBox x:Name="IconPackNewExtensionTextBox"
+                                             Style="{StaticResource AddressBarTextBoxStyle}"
+                                             Width="120"
+                                             Margin="0,0,8,0" />
+                                    <Button x:Name="IconPackAddExtensionButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Click="IconPackAddExtensionButton_Click" />
+                                </StackPanel>
+
+                                <ListView x:Name="IconPackMappingsList"
+                                          Height="140"
+                                          Margin="0,0,0,8">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn x:Name="IconPackExtensionColumn"
+                                                            Header="Extension"
+                                                            Width="90"
+                                                            DisplayMemberBinding="{Binding Extension}" />
+                                            <GridViewColumn x:Name="IconPackImageColumn"
+                                                            Header="Image"
+                                                            Width="180"
+                                                            DisplayMemberBinding="{Binding ImageFileName}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+
+                                <Button x:Name="IconPackRemoveExtensionButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,0,0,12"
+                                        Click="IconPackRemoveExtensionButton_Click" />
+
+                                <TextBlock x:Name="IconPackEditorErrorText"
+                                           Foreground="#FFFF6B6B"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed"
+                                           Margin="0,0,0,8" />
+
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button x:Name="IconPackSaveButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,0"
+                                            Click="IconPackSaveButton_Click" />
+                                    <Button x:Name="IconPackApplyButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,0"
+                                            Click="IconPackApplyButton_Click" />
+                                    <Button x:Name="IconPackCancelButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Click="IconPackCancelButton_Click" />
+                                </StackPanel>
+                            </StackPanel>
                         </ScrollViewer>
                     </Border>
                 </Border>
@@ -1676,7 +2158,7 @@
                                                     <Run Text="{Binding Hash}"
                                                          FontWeight="SemiBold"
                                                          FontFamily="Consolas" />
-                                                    <Run Text="  ·  " />
+                                                    <Run Text="  В·  " />
                                                     <Run Text="{Binding Date}" />
                                                 </TextBlock>
                                                 <TextBlock Text="{Binding Message}"

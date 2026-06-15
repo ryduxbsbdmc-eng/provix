@@ -154,6 +154,13 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _isMediaViewerOpen)
+        {
+            CloseMediaViewer();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.F5)
         {
             RefreshActivePane();
@@ -204,6 +211,7 @@ public partial class MainWindow : Window
     {
         SettingsManager.Instance.SettingChanged += OnSettingChanged;
         LocalizationManager.Instance.PropertyChanged += (_, _) => ApplyLocalizedStrings();
+        SizeChanged += MainWindow_MediaViewerSizeChanged;
         _navigationHistory.LoadFromSettings();
         HistoryListBox.ItemsSource = _navigationHistory.Items;
         ApplyLocalizedStrings();
@@ -211,6 +219,8 @@ public partial class MainWindow : Window
         PopulateSettingsControls();
         _suppressSettingsUiChange = false;
         RestoreWindowFromSettings();
+        ApplyFileIconSettings();
+        ApplyCustomFont();
         LoadDriveTree();
     }
 
@@ -495,6 +505,7 @@ public partial class MainWindow : Window
         CancelActivePaneSearch();
         CloseEditor();
         CloseArchiveViewer();
+        CloseMediaViewer();
         NavigateToDirectory(ActivePane, node.FullPath, syncTree: false);
     }
 
@@ -689,6 +700,7 @@ public partial class MainWindow : Window
             CancelPaneSearch(pane);
             CloseEditor();
             CloseArchiveViewer();
+            CloseMediaViewer();
             NavigateToDirectory(pane, entry.FullPath, syncTree: true);
             return;
         }
@@ -711,6 +723,9 @@ public partial class MainWindow : Window
                 return;
             }
 
+            CancelPaneSearch(pane);
+            CancelListingRefresh(pane);
+
             if (recordHistory &&
                 !_suppressHistoryRecording &&
                 pane.CurrentPath is not null &&
@@ -722,11 +737,12 @@ public partial class MainWindow : Window
 
             CloseEditor();
             CloseArchiveViewer();
+            CloseMediaViewer();
             pane.CurrentPath = fullPath;
             SetPathSearchBoxText(pane, fullPath);
 
             if (syncTree && pane == _activePane)
-                SyncTreeToPath(fullPath);
+                ScheduleSyncTreeToPath(pane, fullPath);
 
             RefreshDirectoryListing(pane);
 
@@ -861,6 +877,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (MediaViewerHelper.IsMediaFile(filePath))
+        {
+            if (SettingsManager.Instance.Current.UseBuiltInMediaViewer)
+                await OpenMediaViewerAsync(filePath);
+            else
+                OpenFileWithDefaultApplication(filePath);
+
+            return;
+        }
+
         if (TextFileHelper.IsEditableTextFile(filePath))
         {
             if (!TextFileHelper.IsWithinEditorSizeLimit(filePath, out var fileSize))
@@ -882,7 +908,11 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(pane.CurrentPath))
             return;
 
+        CancelListingRefresh(pane);
+
         var path = pane.CurrentPath;
+        pane.ListingRefreshCancellation = new CancellationTokenSource();
+        var cancellationToken = pane.ListingRefreshCancellation.Token;
         pane.ListingRefreshVersion++;
         var refreshVersion = pane.ListingRefreshVersion;
 
@@ -891,7 +921,11 @@ public partial class MainWindow : Window
         IReadOnlyList<FileSystemEntry> contents;
         try
         {
-            contents = await _fileSystemService.GetDirectoryContentsAsync(path);
+            contents = await _fileSystemService.GetDirectoryContentsAsync(path, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (Exception ex)
         {
@@ -911,16 +945,141 @@ public partial class MainWindow : Window
         if (pane == _activePane)
         {
             StatusText.Text = $"{contents.Count} item(s)";
-            pane.Control.PlayListRefreshAnimation();
+            var shouldAnimate = ShouldPlayListRefreshAnimation(pane);
+            pane.LastListingShownUtc = DateTime.UtcNow;
+            if (shouldAnimate)
+                pane.Control.PlayListRefreshAnimation();
+        }
+        else
+        {
+            pane.LastListingShownUtc = DateTime.UtcNow;
         }
 
-        await ApplyGitMetadataAsync(pane, contents, refreshVersion);
+        var gitTask = ApplyGitMetadataAsync(pane, contents, refreshVersion, cancellationToken);
+        var sizesTask = PopulateDirectorySizesAsync(pane, path, contents, refreshVersion, cancellationToken);
+        await Task.WhenAll(gitTask, sizesTask);
+    }
+
+    private static void CancelListingRefresh(DirectoryPaneState pane)
+    {
+        if (pane.ListingRefreshCancellation is null)
+            return;
+
+        try
+        {
+            pane.ListingRefreshCancellation.Cancel();
+        }
+        catch
+        {
+            // Ignore cancellation races.
+        }
+
+        pane.ListingRefreshCancellation.Dispose();
+        pane.ListingRefreshCancellation = null;
+    }
+
+    private static bool ShouldPlayListRefreshAnimation(DirectoryPaneState pane)
+    {
+        if (pane.LastListingShownUtc == default)
+            return true;
+
+        return (DateTime.UtcNow - pane.LastListingShownUtc).TotalMilliseconds > 300;
+    }
+
+    private void ScheduleSyncTreeToPath(DirectoryPaneState pane, string path)
+    {
+        pane.PendingTreeSyncVersion++;
+        var syncVersion = pane.PendingTreeSyncVersion;
+        var targetPath = path;
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (syncVersion != pane.PendingTreeSyncVersion)
+                return;
+
+            if (pane.CurrentPath is null ||
+                !PathsEqual(pane.CurrentPath, targetPath))
+            {
+                return;
+            }
+
+            SyncTreeToPath(targetPath);
+        }, DispatcherPriority.Background);
+    }
+
+    private async Task PopulateDirectorySizesAsync(
+        DirectoryPaneState pane,
+        string path,
+        IReadOnlyList<FileSystemEntry> entries,
+        int refreshVersion,
+        CancellationToken cancellationToken)
+    {
+        var directories = entries.Where(entry => entry.IsDirectory).ToArray();
+        if (directories.Length == 0)
+            return;
+
+        try
+        {
+            await Task.Delay(200, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (refreshVersion != pane.ListingRefreshVersion ||
+            !string.Equals(pane.CurrentPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Dictionary<string, long> sizes;
+        try
+        {
+            sizes = await Task.Run(() =>
+            {
+                var result = new Dictionary<string, long>(directories.Length, StringComparer.OrdinalIgnoreCase);
+
+                Parallel.ForEach(
+                    directories,
+                    new ParallelOptions
+                    {
+                        CancellationToken = cancellationToken,
+                        MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2)
+                    },
+                    directory =>
+                    {
+                        result[directory.FullPath] = DirectorySizeHelper.CalculateSize(
+                            directory.FullPath,
+                            cancellationToken);
+                    });
+
+                return result;
+            }, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (refreshVersion != pane.ListingRefreshVersion ||
+            !string.Equals(pane.CurrentPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        foreach (var directory in directories)
+        {
+            if (sizes.TryGetValue(directory.FullPath, out var size))
+                directory.Size = size;
+        }
     }
 
     private async Task ApplyGitMetadataAsync(
         DirectoryPaneState pane,
         IReadOnlyList<FileSystemEntry> entries,
-        int refreshVersion)
+        int refreshVersion,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(pane.CurrentPath))
         {
@@ -935,9 +1094,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        var status = await GitService.GetWorkingTreeStatusAsync(repoRoot);
-        if (refreshVersion != pane.ListingRefreshVersion)
+        if (cancellationToken.IsCancellationRequested)
             return;
+
+        var status = await GitService.GetWorkingTreeStatusAsync(repoRoot);
+        if (cancellationToken.IsCancellationRequested ||
+            refreshVersion != pane.ListingRefreshVersion)
+        {
+            return;
+        }
 
         if (!status.Success)
         {
@@ -1992,6 +2157,7 @@ public partial class MainWindow : Window
 
         CloseEditor(animate: false);
         CloseArchiveViewer(animate: false);
+        CloseMediaViewer(animate: false);
 
         _openArchivePath = archivePath;
         _openArchivePassword = null;
@@ -3606,7 +3772,42 @@ public partial class MainWindow : Window
                 ApplyLocalizedStrings();
                 PopulateSettingsControls();
                 break;
+            case nameof(AppSettings.FileIconStyle):
+            case nameof(AppSettings.CustomIconPackPath):
+                ApplyFileIconSettings();
+                RefreshAllFileIcons();
+                break;
+            case nameof(AppSettings.CustomFontPath):
+            case nameof(AppSettings.UiFontId):
+                ApplyCustomFont();
+                break;
         }
+    }
+
+    private void ApplyCustomFont()
+    {
+        var settings = SettingsManager.Instance.Current;
+        FontManager.Apply(this, settings.UiFontId, settings.CustomFontPath);
+    }
+
+    private void ApplyFileIconSettings()
+    {
+        var settings = SettingsManager.Instance.Current;
+        _iconService.ApplySettings(settings.FileIconStyle, settings.CustomIconPackPath);
+    }
+
+    private void RefreshAllFileIcons()
+    {
+        LoadDriveTree();
+
+        foreach (var pane in _panes)
+        {
+            if (!string.IsNullOrEmpty(pane.CurrentPath))
+                RefreshDirectoryListing(pane);
+        }
+
+        _navigationHistory.LoadFromSettings();
+        UpdateHistoryEmptyState();
     }
 
     private void ApplyLocalizedStrings()
@@ -3615,6 +3816,23 @@ public partial class MainWindow : Window
         Title = loc["UI_AppTitle"];
         TerminalToggleButton.ToolTip = loc["UI_TerminalToggle"];
         SettingsButton.ToolTip = loc["UI_Settings"];
+        SettingsGeneralTabButton.Content = loc["UI_SettingsTabGeneral"];
+        SettingsCustomizationTabButton.Content = loc["UI_SettingsTabCustomization"];
+        SettingsUseBuiltInMediaViewerCheckBox.Content = loc["UI_UseBuiltInMediaViewer"];
+        SettingsUseBuiltInMediaViewerHint.Text = loc["UI_UseBuiltInMediaViewerHint"];
+        SettingsCustomFontLabel.Text = loc["UI_Font"];
+        SettingsCustomFontHint.Text = loc["UI_CustomFontHint"];
+        SettingsBrowseFontButton.Content = loc["UI_BrowseFont"];
+        SettingsClearFontButton.Content = loc["UI_ClearFont"];
+        PopulateFontComboBox(loc);
+        SettingsIconStyleLabel.Text = loc["UI_IconStyle"];
+        SettingsCustomIconPackLabel.Text = loc["UI_CustomIconPack"];
+        SettingsCustomIconPackHint.Text = loc["UI_CustomIconPackHint"];
+        SettingsBrowseIconPackButton.Content = loc["UI_BrowseIconPack"];
+        SettingsClearIconPackButton.Content = loc["UI_ClearIconPack"];
+        SettingsEditIconPackButton.Content = loc["UI_EditIconPack"];
+        if (IconPackEditorOverlay.Visibility == Visibility.Visible)
+            ApplyIconPackEditorLocalizedStrings(loc);
         AddPaneButton.ToolTip = loc["UI_AddPane"];
         BackNavigationButton.ToolTip = loc["UI_Back"];
         ForwardNavigationButton.ToolTip = loc["UI_Forward"];
@@ -3646,6 +3864,10 @@ public partial class MainWindow : Window
         ArchivePasswordTitleText.Text = loc["UI_ArchivePasswordTitle"];
         ArchivePasswordHintText.Text = loc["UI_ArchivePasswordHint"];
         ArchivePasswordConfirmButton.Content = loc["UI_ArchivePasswordUnlock"];
+        MediaViewerCloseButton.Content = loc["UI_Close"];
+        MediaViewerPlayPauseButton.Content = _mediaIsPlaying
+            ? loc["UI_MediaPause"]
+            : loc["UI_MediaPlay"];
         if (EncryptFolderOverlay.Visibility == Visibility.Visible)
             PopulateEncryptFolderMethodCombo();
 
@@ -3667,8 +3889,20 @@ public partial class MainWindow : Window
             SettingsThemeComboBox.SelectedIndex =
                 SettingsManager.Instance.Current.Theme == AppTheme.Light ? 1 : 0;
 
+            SettingsCustomFontPathBox.Text = SettingsManager.Instance.Current.CustomFontPath;
+            SelectFontComboBoxItem(SettingsManager.Instance.Current.UiFontId);
+            UpdateCustomFontPanelVisibility();
+
+            PopulateIconStyleComboBox(loc);
+            SettingsIconStyleComboBox.SelectedIndex = IconStyleToIndex(SettingsManager.Instance.Current.FileIconStyle);
+            SettingsCustomIconPackPathBox.Text = SettingsManager.Instance.Current.CustomIconPackPath;
+            UpdateCustomIconPackPanelVisibility();
+
             SettingsTimeFormatCheckBox.IsChecked =
                 SettingsManager.Instance.Current.TimeFormat == TimeFormatMode.Hour12;
+
+            SettingsUseBuiltInMediaViewerCheckBox.IsChecked =
+                SettingsManager.Instance.Current.UseBuiltInMediaViewer;
 
             var locales = LocalizationManager.Instance.GetAvailableLocales();
             SettingsLanguageComboBox.ItemsSource = locales;
@@ -3705,9 +3939,24 @@ public partial class MainWindow : Window
     private void ShowSettingsOverlay()
     {
         PopulateSettingsControls();
+        SelectSettingsTab(isCustomization: false);
         SettingsOverlay.Visibility = Visibility.Visible;
         UiAnimationHelper.ShowOverlay(SettingsPanel);
     }
+
+    private void SelectSettingsTab(bool isCustomization)
+    {
+        SettingsGeneralPanel.Visibility = isCustomization ? Visibility.Collapsed : Visibility.Visible;
+        SettingsCustomizationPanel.Visibility = isCustomization ? Visibility.Visible : Visibility.Collapsed;
+        SettingsGeneralTabButton.Tag = isCustomization ? null : "selected";
+        SettingsCustomizationTabButton.Tag = isCustomization ? "selected" : null;
+    }
+
+    private void SettingsGeneralTabButton_Click(object sender, RoutedEventArgs e) =>
+        SelectSettingsTab(isCustomization: false);
+
+    private void SettingsCustomizationTabButton_Click(object sender, RoutedEventArgs e) =>
+        SelectSettingsTab(isCustomization: true);
 
     private void HideSettingsOverlay()
     {
@@ -3774,6 +4023,213 @@ public partial class MainWindow : Window
         SettingsManager.Instance.UpdateTheme(theme);
     }
 
+    private void PopulateIconStyleComboBox(LocalizationManager loc)
+    {
+        SettingsIconStyleComboBox.Items.Clear();
+        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleWindows"]);
+        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleFlat"]);
+        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleMinimal"]);
+        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleCustom"]);
+    }
+
+    private static int IconStyleToIndex(FileIconStyle style) =>
+        style switch
+        {
+            FileIconStyle.Flat => 1,
+            FileIconStyle.Minimal => 2,
+            FileIconStyle.Custom => 3,
+            _ => 0
+        };
+
+    private static FileIconStyle IndexToIconStyle(int index) =>
+        index switch
+        {
+            1 => FileIconStyle.Flat,
+            2 => FileIconStyle.Minimal,
+            3 => FileIconStyle.Custom,
+            _ => FileIconStyle.Windows
+        };
+
+    private void SettingsIconStyleComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSettingsUiChange || SettingsIconStyleComboBox.SelectedIndex < 0)
+            return;
+
+        var style = IndexToIconStyle(SettingsIconStyleComboBox.SelectedIndex);
+        UpdateCustomIconPackPanelVisibility();
+        SettingsManager.Instance.UpdateFileIconStyle(style);
+    }
+
+    private void UpdateCustomIconPackPanelVisibility()
+    {
+        var isCustom = SettingsIconStyleComboBox.SelectedIndex == IconStyleToIndex(FileIconStyle.Custom);
+        SettingsCustomIconPackPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SettingsBrowseIconPackButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = LocalizationManager.Instance["UI_BrowseIconPack"]
+        };
+
+        var currentPath = SettingsManager.Instance.Current.CustomIconPackPath;
+        if (!string.IsNullOrWhiteSpace(currentPath) && Directory.Exists(currentPath))
+            dialog.InitialDirectory = currentPath;
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        SettingsCustomIconPackPathBox.Text = dialog.FolderName;
+        if (SettingsIconStyleComboBox.SelectedIndex != IconStyleToIndex(FileIconStyle.Custom))
+        {
+            _suppressSettingsUiChange = true;
+            SettingsIconStyleComboBox.SelectedIndex = IconStyleToIndex(FileIconStyle.Custom);
+            UpdateCustomIconPackPanelVisibility();
+            _suppressSettingsUiChange = false;
+        }
+
+        SettingsManager.Instance.UpdateCustomIconPackPath(dialog.FolderName);
+        if (SettingsManager.Instance.Current.FileIconStyle != FileIconStyle.Custom)
+            SettingsManager.Instance.UpdateFileIconStyle(FileIconStyle.Custom);
+    }
+
+    private void SettingsClearIconPackButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsCustomIconPackPathBox.Text = string.Empty;
+        SettingsManager.Instance.UpdateCustomIconPackPath(string.Empty);
+    }
+
+    private void SettingsBrowseFontButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = LocalizationManager.Instance["UI_BrowseFont"],
+            Filter = "Fonts|*.ttf;*.otf;*.ttc|All files|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        var currentPath = SettingsManager.Instance.Current.CustomFontPath;
+        if (!string.IsNullOrWhiteSpace(currentPath))
+        {
+            var directory = Path.GetDirectoryName(currentPath);
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+                dialog.InitialDirectory = directory;
+        }
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        if (!FontManager.TryImportFont(dialog.FileName, out var storedPath))
+        {
+            MessageBox.Show(
+                LocalizationManager.Instance["UI_CustomFontLoadFailed"],
+                LocalizationManager.Instance["UI_SettingsTitle"],
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        SettingsCustomFontPathBox.Text = storedPath;
+        _suppressSettingsUiChange = true;
+        try
+        {
+            SelectFontComboBoxItem(UiFontIds.Custom);
+            UpdateCustomFontPanelVisibility();
+        }
+        finally
+        {
+            _suppressSettingsUiChange = false;
+        }
+
+        SettingsManager.Instance.UpdateCustomFontPath(storedPath);
+        SettingsManager.Instance.UpdateUiFontId(UiFontIds.Custom);
+    }
+
+    private void SettingsClearFontButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsCustomFontPathBox.Text = string.Empty;
+        _suppressSettingsUiChange = true;
+        try
+        {
+            SelectFontComboBoxItem(UiFontIds.Default);
+            UpdateCustomFontPanelVisibility();
+        }
+        finally
+        {
+            _suppressSettingsUiChange = false;
+        }
+
+        SettingsManager.Instance.UpdateCustomFontPath(string.Empty);
+        SettingsManager.Instance.UpdateUiFontId(UiFontIds.Default);
+    }
+
+    private void SettingsFontComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        if (SettingsFontComboBox.SelectedItem is not UiFontComboItem item)
+            return;
+
+        UpdateCustomFontPanelVisibility();
+        SettingsManager.Instance.UpdateUiFontId(item.Id);
+    }
+
+    private void PopulateFontComboBox(LocalizationManager loc)
+    {
+        var selectedId = SettingsFontComboBox.SelectedItem is UiFontComboItem current
+            ? current.Id
+            : SettingsManager.Instance.Current.UiFontId;
+
+        var suppress = _suppressSettingsUiChange;
+        _suppressSettingsUiChange = true;
+        try
+        {
+            SettingsFontComboBox.Items.Clear();
+            foreach (var option in BuiltInFontCatalog.GetOptions())
+            {
+                SettingsFontComboBox.Items.Add(new UiFontComboItem
+                {
+                    Id = option.Id,
+                    Label = loc[option.LabelKey]
+                });
+            }
+
+            SettingsFontComboBox.DisplayMemberPath = nameof(UiFontComboItem.Label);
+            SelectFontComboBoxItem(selectedId);
+            UpdateCustomFontPanelVisibility();
+        }
+        finally
+        {
+            _suppressSettingsUiChange = suppress;
+        }
+    }
+
+    private void SelectFontComboBoxItem(string fontId)
+    {
+        var normalized = BuiltInFontCatalog.NormalizeFontId(fontId, SettingsManager.Instance.Current.CustomFontPath);
+        for (var index = 0; index < SettingsFontComboBox.Items.Count; index++)
+        {
+            if (SettingsFontComboBox.Items[index] is UiFontComboItem item &&
+                item.Id.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                SettingsFontComboBox.SelectedIndex = index;
+                return;
+            }
+        }
+
+        SettingsFontComboBox.SelectedIndex = 0;
+    }
+
+    private void UpdateCustomFontPanelVisibility()
+    {
+        var isCustom = SettingsFontComboBox.SelectedItem is UiFontComboItem item &&
+                       item.Id.Equals(UiFontIds.Custom, StringComparison.OrdinalIgnoreCase);
+        SettingsCustomFontPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void SettingsTimeFormatCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         if (_suppressSettingsUiChange)
@@ -3783,6 +4239,18 @@ public partial class MainWindow : Window
             ? TimeFormatMode.Hour12
             : TimeFormatMode.Hour24;
         SettingsManager.Instance.UpdateTimeFormat(mode);
+    }
+
+    private void SettingsUseBuiltInMediaViewerCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        var enabled = SettingsUseBuiltInMediaViewerCheckBox.IsChecked == true;
+        SettingsManager.Instance.UpdateUseBuiltInMediaViewer(enabled);
+
+        if (!enabled)
+            CloseMediaViewer();
     }
 
     private void SettingsLanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

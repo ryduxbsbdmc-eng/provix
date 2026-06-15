@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using FileExplorer.Models;
 
 namespace FileExplorer.Services;
 
@@ -23,13 +24,35 @@ public sealed class FileIconService
     private readonly ConcurrentDictionary<string, ImageSource> _cache = new();
     private ImageSource? _defaultFolderIcon;
     private ImageSource? _defaultFileIcon;
+    private FileIconStyle _style = FileIconStyle.Windows;
+    private IconPackLoader? _iconPack;
+
+    public void ApplySettings(FileIconStyle style, string? customIconPackPath)
+    {
+        _style = style;
+        _iconPack = null;
+
+        if (style == FileIconStyle.Custom && !string.IsNullOrWhiteSpace(customIconPackPath))
+        {
+            var loader = new IconPackLoader();
+            if (loader.Load(customIconPackPath))
+                _iconPack = loader;
+        }
+
+        ClearCache();
+    }
+
+    public void ClearCache()
+    {
+        _cache.Clear();
+        _defaultFolderIcon = null;
+        _defaultFileIcon = null;
+    }
 
     public ImageSource GetFolderIcon(string? path = null)
     {
-        if (string.IsNullOrWhiteSpace(path))
-            return _defaultFolderIcon ??= CreateShellIconForFolder(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-
-        return _cache.GetOrAdd($"folder:{path.ToLowerInvariant()}", _ => CreateShellIconForFolder(path));
+        var cacheKey = BuildCacheKey("folder", path);
+        return _cache.GetOrAdd(cacheKey, _ => CreateFolderIcon(path));
     }
 
     public ImageSource GetSharedFolderIcon() => GetFolderIcon();
@@ -37,9 +60,9 @@ public sealed class FileIconService
     public ImageSource GetFileIcon(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))
-            return _defaultFileIcon ??= CreateFallbackIcon(System.Windows.Media.Brushes.LightGray);
+            return GetDefaultFileIcon();
 
-        return _cache.GetOrAdd($"file:{filePath.ToLowerInvariant()}", _ => CreateShellIconForFile(filePath));
+        return _cache.GetOrAdd(BuildCacheKey("file", filePath), _ => CreateFileIcon(filePath));
     }
 
     public ImageSource GetFileIconByExtension(string extension, string? samplePath = null)
@@ -47,13 +70,95 @@ public sealed class FileIconService
         if (!string.IsNullOrWhiteSpace(samplePath))
             return GetFileIcon(samplePath);
 
-        if (string.IsNullOrEmpty(extension))
-            return _defaultFileIcon ??= CreateFallbackIcon(System.Windows.Media.Brushes.LightGray);
-
-        return _cache.GetOrAdd($"ext:{extension.ToLowerInvariant()}", _ => CreateShellIconForExtension(extension));
+        return _cache.GetOrAdd(BuildCacheKey("ext", extension), _ => CreateFileIconByExtension(extension));
     }
 
-    public ImageSource GetDriveIcon(string driveRoot) => GetFolderIcon(driveRoot);
+    public ImageSource GetDriveIcon(string driveRoot) =>
+        _cache.GetOrAdd(BuildCacheKey("drive", driveRoot), _ => CreateDriveIcon(driveRoot));
+
+    private string BuildCacheKey(string kind, string? value) =>
+        $"{_style}:{kind}:{value?.ToLowerInvariant() ?? string.Empty}";
+
+    private ImageSource CreateFolderIcon(string? path)
+    {
+        if (_style == FileIconStyle.Custom)
+            return _iconPack?.GetFolderIcon() ??
+                   StyledIconRenderer.CreateFlatFolderIcon() ??
+                   GetDefaultFolderIcon();
+
+        if (_style != FileIconStyle.Windows)
+            return CreateStyledFolderIcon() ?? GetDefaultFolderIcon();
+
+        if (string.IsNullOrWhiteSpace(path))
+            return CreateShellIconForFolder(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+
+        if (Directory.Exists(path))
+            return CreateShellIcon(path, isDirectory: true) ?? GetDefaultFolderIcon();
+
+        return GetDefaultFolderIcon();
+    }
+
+    private ImageSource CreateDriveIcon(string driveRoot)
+    {
+        if (_style == FileIconStyle.Custom)
+            return _iconPack?.GetDriveIcon() ??
+                   StyledIconRenderer.CreateFlatFolderIcon() ??
+                   GetDefaultFolderIcon();
+
+        if (_style != FileIconStyle.Windows)
+            return CreateStyledFolderIcon() ?? GetDefaultFolderIcon();
+
+        return CreateShellIconForFolder(driveRoot);
+    }
+
+    private ImageSource CreateFileIcon(string filePath)
+    {
+        if (_style == FileIconStyle.Custom)
+        {
+            var extension = Path.GetExtension(filePath);
+            return _iconPack?.GetFileIcon(extension) ??
+                   StyledIconRenderer.CreateFlatFileIcon(extension) ??
+                   GetDefaultFileIcon();
+        }
+
+        if (_style != FileIconStyle.Windows)
+            return CreateStyledFileIcon(Path.GetExtension(filePath)) ?? GetDefaultFileIcon();
+
+        if (File.Exists(filePath))
+            return CreateShellIcon(filePath, isDirectory: false) ?? GetDefaultFileIcon();
+
+        return GetDefaultFileIcon();
+    }
+
+    private ImageSource CreateFileIconByExtension(string extension)
+    {
+        if (_style == FileIconStyle.Custom)
+            return _iconPack?.GetFileIcon(extension) ??
+                   StyledIconRenderer.CreateFlatFileIcon(extension) ??
+                   GetDefaultFileIcon();
+
+        if (_style != FileIconStyle.Windows)
+            return CreateStyledFileIcon(extension) ?? GetDefaultFileIcon();
+
+        return CreateShellIcon($"placeholder{extension}", isDirectory: false, useFileAttributes: true) ??
+               GetDefaultFileIcon();
+    }
+
+    private ImageSource? CreateStyledFolderIcon() =>
+        _style switch
+        {
+            FileIconStyle.Flat => StyledIconRenderer.CreateFlatFolderIcon(),
+            FileIconStyle.Minimal => StyledIconRenderer.CreateMinimalFolderIcon(),
+            _ => null
+        };
+
+    private ImageSource? CreateStyledFileIcon(string extension) =>
+        _style switch
+        {
+            FileIconStyle.Flat => StyledIconRenderer.CreateFlatFileIcon(extension),
+            FileIconStyle.Minimal => StyledIconRenderer.CreateMinimalFileIcon(extension),
+            _ => null
+        };
 
     private ImageSource CreateShellIconForFolder(string path)
     {
@@ -61,20 +166,6 @@ public sealed class FileIconService
             return CreateShellIcon(path, isDirectory: true) ?? GetDefaultFolderIcon();
 
         return GetDefaultFolderIcon();
-    }
-
-    private ImageSource CreateShellIconForFile(string path)
-    {
-        if (File.Exists(path))
-            return CreateShellIcon(path, isDirectory: false) ?? GetDefaultFileIcon();
-
-        return GetDefaultFileIcon();
-    }
-
-    private ImageSource CreateShellIconForExtension(string extension)
-    {
-        var shellIcon = CreateShellIcon($"placeholder{extension}", isDirectory: false, useFileAttributes: true);
-        return shellIcon ?? GetDefaultFileIcon();
     }
 
     private ImageSource? CreateShellIcon(string path, bool isDirectory, bool useFileAttributes = false)
@@ -105,10 +196,12 @@ public sealed class FileIconService
     }
 
     private ImageSource GetDefaultFolderIcon() =>
-        _defaultFolderIcon ??= CreateFallbackIcon(System.Windows.Media.Brushes.Gold);
+        _defaultFolderIcon ??= CreateStyledFolderIcon() ??
+                               CreateFallbackIcon(System.Windows.Media.Brushes.Gold);
 
     private ImageSource GetDefaultFileIcon() =>
-        _defaultFileIcon ??= CreateFallbackIcon(System.Windows.Media.Brushes.LightGray);
+        _defaultFileIcon ??= CreateStyledFileIcon(string.Empty) ??
+                             CreateFallbackIcon(System.Windows.Media.Brushes.LightGray);
 
     private static ImageSource IconToImageSource(Icon icon)
     {

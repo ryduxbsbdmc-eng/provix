@@ -1,19 +1,47 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows.Media;
 
 namespace FileExplorer.Models;
 
-public sealed class FileSystemEntry
+public sealed class FileSystemEntry : INotifyPropertyChanged
 {
+    private long _size = -1;
+
     public required string Name { get; init; }
+
     public required string FullPath { get; init; }
+
     public required bool IsDirectory { get; init; }
+
     public DateTime DateModified { get; init; }
+
     public string Type { get; init; } = string.Empty;
-    public long Size { get; init; }
+
+    public long Size
+    {
+        get => _size;
+        set
+        {
+            if (_size == value)
+                return;
+
+            _size = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SizeDisplay));
+        }
+    }
+
     public ImageSource? Icon { get; init; }
+
     public GitFileStatusType GitStatus { get; set; } = GitFileStatusType.Unchanged;
 
-    public string SizeDisplay => IsDirectory ? string.Empty : FormatSize(Size);
+    public string SizeDisplay => _size < 0 ? "..." : FormatSize(_size);
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private static string FormatSize(long bytes)
     {

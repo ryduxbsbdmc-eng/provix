@@ -1,0 +1,12 @@
+{
+  "name": "Example icon pack",
+  "folder": "folder.png",
+  "file": "file.png",
+  "drive": "drive.png",
+  "extensions": {
+    ".txt": "txt.png",
+    ".pdf": "pdf.png",
+    ".zip": "zip.png",
+    ".cs": "cs.png"
+  }
+}

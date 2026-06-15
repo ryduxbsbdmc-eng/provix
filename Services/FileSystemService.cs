@@ -88,17 +88,23 @@ public sealed class FileSystemService
     }
 
     public Task<IReadOnlyList<FileSystemEntry>> GetDirectoryContentsAsync(string path, CancellationToken cancellationToken = default) =>
-        Task.Run(() => GetDirectoryContents(path), cancellationToken);
+        Task.Run(() => GetDirectoryContents(path, cancellationToken), cancellationToken);
 
-    public IReadOnlyList<FileSystemEntry> GetDirectoryContents(string path)
+    public IReadOnlyList<FileSystemEntry> GetDirectoryContents(string path, CancellationToken cancellationToken = default)
     {
         var entries = new List<FileSystemEntry>(256);
 
         foreach (var directory in Directory.EnumerateDirectories(path, "*", BrowseEnumerationOptions))
-            entries.Add(CreateDirectoryEntryFromPath(directory));
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            entries.Add(CreateDirectoryEntryFromPath(directory, fastIcons: true));
+        }
 
         foreach (var file in Directory.EnumerateFiles(path, "*", BrowseEnumerationOptions))
-            entries.Add(CreateFileEntryFromPath(file));
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            entries.Add(CreateFileEntryFromPath(file, fastIcons: true));
+        }
 
         return SortEntries(entries);
     }
@@ -305,7 +311,7 @@ public sealed class FileSystemService
         }
     }
 
-    private FileSystemEntry CreateDirectoryEntryFromPath(string fullPath)
+    private FileSystemEntry CreateDirectoryEntryFromPath(string fullPath, bool fastIcons = false)
     {
         var name = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         DateTime modified = default;
@@ -326,11 +332,14 @@ public sealed class FileSystemService
             IsDirectory = true,
             DateModified = modified,
             Type = "File folder",
-            Icon = _iconService.GetFolderIcon(fullPath)
+            Size = -1,
+            Icon = fastIcons
+                ? _iconService.GetFolderIcon()
+                : _iconService.GetFolderIcon(fullPath)
         };
     }
 
-    private FileSystemEntry CreateFileEntryFromPath(string fullPath)
+    private FileSystemEntry CreateFileEntryFromPath(string fullPath, bool fastIcons = false)
     {
         var name = Path.GetFileName(fullPath);
         var extension = Path.GetExtension(fullPath);
@@ -359,7 +368,9 @@ public sealed class FileSystemService
                 ? extension.TrimStart('.').ToUpperInvariant() + " File"
                 : "File",
             Size = size,
-            Icon = _iconService.GetFileIcon(fullPath)
+            Icon = fastIcons
+                ? _iconService.GetFileIconByExtension(extension)
+                : _iconService.GetFileIcon(fullPath)
         };
     }
 

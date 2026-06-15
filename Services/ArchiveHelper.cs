@@ -9,7 +9,7 @@ public static class ArchiveHelper
 
     private static readonly HashSet<string> ArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".zip", ".rar", ".7z"
+        ".zip", ".rar", ".7z", ".iso"
     };
 
     public static bool IsArchiveFile(string filePath)

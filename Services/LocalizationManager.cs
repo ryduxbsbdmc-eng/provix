@@ -102,6 +102,7 @@ public sealed class LocalizationManager : INotifyPropertyChanged
         {
             "en-us" => "English (US)",
             "ru-ru" => "Русский",
+            "uk-ua" => "Українська",
             _ => code
         };
 
