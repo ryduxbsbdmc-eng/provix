@@ -15,7 +15,15 @@ public partial class App : Application
         ThemeManager.ApplyTheme(SettingsManager.Instance.Current.Theme);
         LocalizationManager.Instance.LoadLanguage(SettingsManager.Instance.Current.Language);
 
+        SessionEnding += App_SessionEnding;
+
         base.OnStartup(e);
+    }
+
+    private void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)
+    {
+        if (Current.MainWindow is MainWindow window)
+            window.PersistSessionSettings();
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

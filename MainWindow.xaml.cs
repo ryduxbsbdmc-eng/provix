@@ -29,6 +29,7 @@ public partial class MainWindow : Window
 
     private readonly FileIconService _iconService = new();
     private readonly FileSystemService _fileSystemService;
+    private readonly NavigationHistoryService _navigationHistory;
     private readonly RecycleBinService _recycleBinService = new();
     private readonly ArchiveService _archiveService = new();
     private readonly FileMoveService _fileMoveService = new();
@@ -71,14 +72,21 @@ public partial class MainWindow : Window
     private bool _isTerminalVisible;
     private bool _terminalAnimationInProgress;
 
-    private const double TerminalDefaultHeight = 220;
     private const double TerminalSplitterHeight = 6;
-    private const double TerminalMinHeight = 120;
+
+    private double SavedTerminalPanelHeight =>
+        Math.Clamp(
+            SettingsManager.Instance.Current.TerminalPanelHeight,
+            SettingsManager.MinTerminalPanelHeight,
+            SettingsManager.MaxTerminalPanelHeight);
 
     public MainWindow()
     {
         _fileSystemService = new FileSystemService(_iconService);
+        _navigationHistory = new NavigationHistoryService(_iconService);
+        _suppressSettingsUiChange = true;
         InitializeComponent();
+        TerminalSplitter.DragCompleted += TerminalSplitter_DragCompleted;
         Loaded += MainWindow_Loaded;
         StateChanged += MainWindow_StateChanged;
         ContentRendered += MainWindow_ContentRendered;
@@ -89,7 +97,53 @@ public partial class MainWindow : Window
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _terminalAnimationInProgress = false;
+        PersistSessionSettings();
         FinishHideTerminal(animate: false);
+    }
+
+    public void PersistSessionSettings()
+    {
+        var terminalHeight = _isTerminalVisible && TerminalPanelRow.ActualHeight > 0
+            ? TerminalPanelRow.ActualHeight
+            : SettingsManager.Instance.Current.TerminalPanelHeight;
+
+        var scrollSensitivity = SettingsManager.Instance.Current.ScrollSensitivity;
+        if (IsLoaded && SettingsScrollSensitivitySlider is not null)
+        {
+            scrollSensitivity = SettingsScrollSensitivitySlider.Value;
+        }
+
+        double windowWidth;
+        double windowHeight;
+        if (WindowState == WindowState.Maximized)
+        {
+            var bounds = RestoreBounds;
+            windowWidth = bounds.Width;
+            windowHeight = bounds.Height;
+        }
+        else
+        {
+            windowWidth = Width;
+            windowHeight = Height;
+        }
+
+        SettingsManager.Instance.PersistSession(
+            scrollSensitivity,
+            terminalHeight,
+            _isTerminalVisible,
+            windowWidth,
+            windowHeight,
+            (int)WindowState);
+    }
+
+    private void TerminalSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (!_isTerminalVisible || TerminalPanelRow.ActualHeight <= 0)
+            return;
+
+        SettingsManager.Instance.UpdateTerminalPreferences(
+            TerminalPanelRow.ActualHeight,
+            isOpen: true);
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -120,6 +174,7 @@ public partial class MainWindow : Window
     {
         ContentRendered -= MainWindow_ContentRendered;
         EnsureInitialPane();
+        RestoreTerminalFromSettings();
     }
 
     private void EnsureInitialPane()
@@ -143,9 +198,42 @@ public partial class MainWindow : Window
     {
         SettingsManager.Instance.SettingChanged += OnSettingChanged;
         LocalizationManager.Instance.PropertyChanged += (_, _) => ApplyLocalizedStrings();
+        _navigationHistory.LoadFromSettings();
+        HistoryListBox.ItemsSource = _navigationHistory.Items;
         ApplyLocalizedStrings();
+        _suppressSettingsUiChange = true;
         PopulateSettingsControls();
+        _suppressSettingsUiChange = false;
+        RestoreWindowFromSettings();
         LoadDriveTree();
+    }
+
+    private void RestoreWindowFromSettings()
+    {
+        var settings = SettingsManager.Instance.Current;
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (settings.WindowState == (int)WindowState.Maximized)
+            {
+                WindowState = WindowState.Maximized;
+                return;
+            }
+
+            if (settings.WindowWidth >= MinWidth && settings.WindowHeight >= MinHeight)
+            {
+                Width = settings.WindowWidth;
+                Height = settings.WindowHeight;
+            }
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void RestoreTerminalFromSettings()
+    {
+        if (!SettingsManager.Instance.Current.IsTerminalOpen)
+            return;
+
+        ShowTerminalFromSettings();
     }
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
@@ -592,26 +680,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (ArchiveHelper.IsArchiveFile(entry.FullPath))
-        {
-            await OpenArchiveViewerAsync(entry.FullPath);
-            return;
-        }
-
-        if (TextFileHelper.IsEditableTextFile(entry.FullPath))
-        {
-            if (!TextFileHelper.IsWithinEditorSizeLimit(entry.FullPath, out var fileSize))
-            {
-                OpenFileWithDefaultApplication(entry.FullPath);
-                StatusText.Text = $"Opened with default app ({TextFileHelper.FormatByteSize(fileSize)} exceeds built-in editor limit).";
-                return;
-            }
-
-            await OpenFileInEditorAsync(entry.FullPath);
-            return;
-        }
-
-        OpenFileWithDefaultApplication(entry.FullPath);
+        await OpenFileFromPathAsync(entry.FullPath);
     }
 
     private void NavigateToDirectory(
@@ -647,6 +716,8 @@ public partial class MainWindow : Window
                 SyncTreeToPath(fullPath);
 
             RefreshDirectoryListing(pane);
+
+            _navigationHistory.RecordFolder(fullPath);
 
             if (pane == _activePane)
                 UpdateNavigationButtons(pane);
@@ -706,6 +777,91 @@ public partial class MainWindow : Window
     {
         BackNavigationButton.IsEnabled = pane.BackHistory.Count > 0;
         ForwardNavigationButton.IsEnabled = pane.ForwardHistory.Count > 0;
+    }
+
+    private void HistoryNavigationButton_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateHistoryEmptyState();
+        HistoryPopup.IsOpen = !HistoryPopup.IsOpen;
+    }
+
+    private void UpdateHistoryEmptyState()
+    {
+        var hasItems = _navigationHistory.Items.Count > 0;
+        HistoryListBox.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        HistoryEmptyText.Visibility = hasItems ? Visibility.Collapsed : Visibility.Visible;
+        HistoryClearButton.IsEnabled = hasItems;
+    }
+
+    private async void HistoryListBox_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (HistoryListBox.SelectedItem is not NavigationHistoryItem item)
+            return;
+
+        HistoryPopup.IsOpen = false;
+        await OpenHistoryItemAsync(item);
+    }
+
+    private void HistoryClearButton_Click(object sender, RoutedEventArgs e)
+    {
+        _navigationHistory.Clear();
+        UpdateHistoryEmptyState();
+        HistoryPopup.IsOpen = false;
+    }
+
+    private async Task OpenHistoryItemAsync(NavigationHistoryItem item)
+    {
+        var pane = ActivePane;
+        var loc = LocalizationManager.Instance;
+
+        if (item.Kind == NavigationHistoryKind.Folder)
+        {
+            if (!Directory.Exists(item.Path))
+            {
+                StatusText.Text = loc["UI_HistoryMissing"];
+                return;
+            }
+
+            CancelPaneSearch(pane);
+            NavigateToDirectory(pane, item.Path, syncTree: true);
+            return;
+        }
+
+        if (!File.Exists(item.Path))
+        {
+            StatusText.Text = loc["UI_HistoryMissing"];
+            return;
+        }
+
+        var parentDirectory = Path.GetDirectoryName(item.Path);
+        if (!string.IsNullOrWhiteSpace(parentDirectory) && Directory.Exists(parentDirectory))
+            NavigateToDirectory(pane, parentDirectory, syncTree: true, recordHistory: false);
+
+        await OpenFileFromPathAsync(item.Path);
+    }
+
+    private async Task OpenFileFromPathAsync(string filePath)
+    {
+        if (ArchiveHelper.IsArchiveFile(filePath))
+        {
+            await OpenArchiveViewerAsync(filePath);
+            return;
+        }
+
+        if (TextFileHelper.IsEditableTextFile(filePath))
+        {
+            if (!TextFileHelper.IsWithinEditorSizeLimit(filePath, out var fileSize))
+            {
+                OpenFileWithDefaultApplication(filePath);
+                StatusText.Text = $"Opened with default app ({TextFileHelper.FormatByteSize(fileSize)} exceeds built-in editor limit).";
+                return;
+            }
+
+            await OpenFileInEditorAsync(filePath);
+            return;
+        }
+
+        OpenFileWithDefaultApplication(filePath);
     }
 
     private async void RefreshDirectoryListing(DirectoryPaneState pane)
@@ -978,6 +1134,7 @@ public partial class MainWindow : Window
             EditorTextBox.Focus();
             EditorTextBox.CaretIndex = 0;
 
+            _navigationHistory.RecordFile(filePath);
             StatusText.Text = $"Editing {Path.GetFileName(filePath)}";
         }
         catch (UnauthorizedAccessException)
@@ -1792,6 +1949,7 @@ public partial class MainWindow : Window
             var entries = await Task.Run(() => _archiveService.GetEntries(archivePath));
             ArchiveContentsList.ItemsSource = entries;
             ArchiveExtractButton.IsEnabled = !_isExtracting;
+            _navigationHistory.RecordFile(archivePath);
             StatusText.Text = $"{entries.Count} file(s) in {Path.GetFileName(archivePath)}";
         }
         catch (Exception ex)
@@ -2961,7 +3119,7 @@ public partial class MainWindow : Window
             Path.GetFullPath(right).TrimEnd('\\'),
             StringComparison.OrdinalIgnoreCase);
 
-    private static void OpenFileWithDefaultApplication(string filePath)
+    private void OpenFileWithDefaultApplication(string filePath)
     {
         try
         {
@@ -2970,6 +3128,8 @@ public partial class MainWindow : Window
                 FileName = filePath,
                 UseShellExecute = true
             });
+
+            _navigationHistory.RecordFile(filePath);
         }
         catch (Exception ex)
         {
@@ -3039,6 +3199,19 @@ public partial class MainWindow : Window
         AddPaneButton.ToolTip = loc["UI_AddPane"];
         BackNavigationButton.ToolTip = loc["UI_Back"];
         ForwardNavigationButton.ToolTip = loc["UI_Forward"];
+        HistoryNavigationButton.ToolTip = loc["UI_History"];
+        HistoryTitleText.Text = loc["UI_HistoryTitle"];
+        HistoryEmptyText.Text = loc["UI_HistoryEmpty"];
+        HistoryClearButton.Content = loc["UI_HistoryClear"];
+        _navigationHistory.LoadFromSettings();
+        UpdateHistoryEmptyState();
+        SettingsScrollSensitivityLabel.Text = loc["UI_ScrollSensitivity"];
+        SettingsScrollSensitivityLiveLabel.Text = loc["UI_ScrollSensitivityLive"];
+        SettingsScrollSensitivityHint.Text = loc["UI_ScrollSensitivityHint"];
+        SettingsScrollSensitivitySlowText.Text = loc["UI_ScrollSensitivitySlow"];
+        SettingsScrollSensitivityDefaultText.Text = loc["UI_ScrollSensitivityDefault"];
+        SettingsScrollSensitivityFastText.Text = loc["UI_ScrollSensitivityFast"];
+        UpdateScrollSensitivityValueText(SettingsScrollSensitivitySlider.Value);
         SearchingIndicator.Text = loc["UI_Searching"];
         ExtractingIndicator.Text = loc["UI_Extracting"];
         ArchiveFileNameColumn.Header = loc["UI_ColumnFileName"];
@@ -3051,6 +3224,7 @@ public partial class MainWindow : Window
 
     private void PopulateSettingsControls()
     {
+        var suppressSettings = _suppressSettingsUiChange;
         _suppressSettingsUiChange = true;
         _suppressAiApiKeyChange = true;
         try
@@ -3074,10 +3248,16 @@ public partial class MainWindow : Window
 
             SettingsAiApiKeyBox.Text = SettingsManager.Instance.Current.OpenRouterApiKey;
             SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
+
+            SettingsScrollSensitivitySlider.Value = Math.Clamp(
+                SettingsManager.Instance.Current.ScrollSensitivity,
+                SettingsManager.MinScrollSensitivity,
+                SettingsManager.MaxScrollSensitivity);
+            UpdateScrollSensitivityValueText(SettingsScrollSensitivitySlider.Value);
         }
         finally
         {
-            _suppressSettingsUiChange = false;
+            _suppressSettingsUiChange = suppressSettings;
             _suppressAiApiKeyChange = false;
         }
     }
@@ -3102,6 +3282,8 @@ public partial class MainWindow : Window
     {
         if (SettingsOverlay.Visibility != Visibility.Visible)
             return;
+
+        CommitScrollSensitivitySetting();
 
         void FinishHide()
         {
@@ -3180,6 +3362,49 @@ public partial class MainWindow : Window
         SettingsManager.Instance.UpdateLanguage(locale.Code);
     }
 
+    private void SettingsScrollSensitivitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateScrollSensitivityValueText(e.NewValue);
+
+        if (_suppressSettingsUiChange || !IsLoaded)
+            return;
+
+        SettingsManager.Instance.UpdateScrollSensitivity(e.NewValue);
+    }
+
+    private void SettingsScrollSensitivitySlider_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+
+        if (sender is not Slider slider)
+            return;
+
+        var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 0.01 : 0.05;
+        var delta = e.Delta > 0 ? step : -step;
+        slider.Value = Math.Clamp(
+            slider.Value + delta,
+            slider.Minimum,
+            slider.Maximum);
+    }
+
+    private void CommitScrollSensitivitySetting()
+    {
+        SettingsManager.Instance.UpdateScrollSensitivity(SettingsScrollSensitivitySlider.Value);
+    }
+
+    private void UpdateScrollSensitivityValueText(double sensitivity)
+    {
+        sensitivity = Math.Clamp(
+            sensitivity,
+            SettingsManager.MinScrollSensitivity,
+            SettingsManager.MaxScrollSensitivity);
+
+        var percent = sensitivity * 100.0;
+        SettingsScrollSensitivityValueText.Text = Math.Abs(percent - 100.0) < 0.05
+            ? "100%"
+            : $"{percent:0.#}%";
+    }
+
     private void SettingsAiApiKeyBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_suppressAiApiKeyChange)
@@ -3218,6 +3443,29 @@ public partial class MainWindow : Window
         ShowTerminalWithAnimation();
     }
 
+    private void ShowTerminalFromSettings()
+    {
+        var height = SavedTerminalPanelHeight;
+        _isTerminalVisible = true;
+
+        TerminalSplitter.Visibility = Visibility.Visible;
+        TerminalSplitter.Opacity = 1;
+        PowerShellTerminal.Visibility = Visibility.Visible;
+        PowerShellTerminal.Opacity = 1;
+
+        TerminalPanelRow.MinHeight = SettingsManager.MinTerminalPanelHeight;
+        TerminalPanelRow.Height = new GridLength(height);
+        TerminalSplitterRow.MinHeight = TerminalSplitterHeight;
+        TerminalSplitterRow.Height = new GridLength(TerminalSplitterHeight);
+
+        var path = ActivePane.CurrentPath;
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        PowerShellTerminal.StartSession(path);
+        PowerShellTerminal.FocusInput();
+    }
+
     private void ShowTerminalWithAnimation()
     {
         _terminalAnimationInProgress = true;
@@ -3242,12 +3490,15 @@ public partial class MainWindow : Window
         else
             PowerShellTerminal.SyncWorkingDirectory(path);
 
+        var targetHeight = SavedTerminalPanelHeight;
+
         var stepComplete = UiAnimationHelper.CreateParallelCallback(2, () =>
         {
-            TerminalPanelRow.MinHeight = TerminalMinHeight;
-            TerminalPanelRow.Height = new GridLength(TerminalDefaultHeight);
+            TerminalPanelRow.MinHeight = SettingsManager.MinTerminalPanelHeight;
+            TerminalPanelRow.Height = new GridLength(targetHeight);
             TerminalSplitterRow.MinHeight = TerminalSplitterHeight;
             TerminalSplitterRow.Height = new GridLength(TerminalSplitterHeight);
+            SettingsManager.Instance.UpdateTerminalPreferences(targetHeight, isOpen: true);
             _terminalAnimationInProgress = false;
             TerminalToggleButton.IsEnabled = true;
             PowerShellTerminal.FocusInput();
@@ -3256,7 +3507,7 @@ public partial class MainWindow : Window
         UiAnimationHelper.AnimateTerminalEntrance(PowerShellTerminal, stepComplete);
         UiAnimationHelper.AnimateTerminalLayout(
             TerminalSplitterRow, 0, TerminalSplitterHeight,
-            TerminalPanelRow, 0, TerminalDefaultHeight,
+            TerminalPanelRow, 0, targetHeight,
             fadeIn: true,
             stepComplete);
     }
@@ -3268,7 +3519,7 @@ public partial class MainWindow : Window
 
         var panelHeight = TerminalPanelRow.ActualHeight > 0
             ? TerminalPanelRow.ActualHeight
-            : TerminalDefaultHeight;
+            : SavedTerminalPanelHeight;
         var splitterHeight = TerminalSplitterRow.ActualHeight > 0
             ? TerminalSplitterRow.ActualHeight
             : TerminalSplitterHeight;
@@ -3278,6 +3529,7 @@ public partial class MainWindow : Window
 
         var stepComplete = UiAnimationHelper.CreateParallelCallback(2, () =>
         {
+            SettingsManager.Instance.UpdateTerminalPreferences(panelHeight, isOpen: false);
             FinishHideTerminal(animate: false);
             _terminalAnimationInProgress = false;
             TerminalToggleButton.IsEnabled = true;

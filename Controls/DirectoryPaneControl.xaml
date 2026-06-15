@@ -141,7 +141,6 @@
                           ItemContainerStyle="{DynamicResource ExplorerListViewItemStyle}"
                           VirtualizingPanel.IsVirtualizing="True"
                           VirtualizingPanel.VirtualizationMode="Recycling"
-                          ScrollViewer.CanContentScroll="True"
                           MouseDoubleClick="FileList_MouseDoubleClick"
                           ContextMenuOpening="FileList_ContextMenuOpening"
                           PreviewMouseRightButtonDown="FileList_PreviewMouseRightButtonDown"
