@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using FileExplorer.Services;
 
 namespace FileExplorer;
 
@@ -9,6 +10,10 @@ public partial class App : Application
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+
+        SettingsManager.Instance.Load();
+        ThemeManager.ApplyTheme(SettingsManager.Instance.Current.Theme);
+        LocalizationManager.Instance.LoadLanguage(SettingsManager.Instance.Current.Language);
 
         base.OnStartup(e);
     }

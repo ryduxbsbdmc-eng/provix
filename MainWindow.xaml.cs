@@ -50,6 +50,7 @@ public partial class MainWindow : Window
     private bool _isArchiveViewerOpen;
     private bool _isExtracting;
     private bool _paneRemoveInProgress;
+    private bool _suppressSettingsUiChange;
 
     public MainWindow()
     {
@@ -85,13 +86,20 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        SettingsManager.Instance.SettingChanged += OnSettingChanged;
+        LocalizationManager.Instance.PropertyChanged += (_, _) => ApplyLocalizedStrings();
+        ApplyLocalizedStrings();
+        PopulateSettingsControls();
         LoadDriveTree();
     }
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
+        var loc = LocalizationManager.Instance;
         MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
-        MaximizeButton.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
+        MaximizeButton.ToolTip = WindowState == WindowState.Maximized
+            ? loc["UI_Restore"]
+            : loc["UI_Maximize"];
     }
 
     private void LoadDriveTree()
@@ -106,6 +114,7 @@ public partial class MainWindow : Window
         if (_driveNodes.Count == 0)
             return;
 
+        StatusText.Text = LocalizationManager.Instance["UI_Ready"];
         EnsureInitialPane();
     }
 
@@ -129,6 +138,7 @@ public partial class MainWindow : Window
 
         _panes.Add(pane);
         UpdatePaneCloseButtonsVisibility();
+        pane.Control.ApplyLocalization();
         return pane;
     }
 
@@ -198,7 +208,7 @@ public partial class MainWindow : Window
         for (var i = 0; i < _panes.Count; i++)
         {
             var control = _panes[i].Control;
-            var prepareEntrance = control == entrancePane;
+            var prepareEntrance = ReferenceEquals(control, entrancePane);
             var wrapper = DirectoryPaneHost.AddPaneColumn(
                 control,
                 addSplitterAfter: i < _panes.Count - 1,
@@ -927,6 +937,7 @@ public partial class MainWindow : Window
             {
                 "Delete" => hasSelection,
                 "ExtractArchive" => isArchiveSelection && hasPath && !_isExtracting,
+                "ShowWindowsMenu" => hasSelection || hasPath,
                 _ => hasPath
             };
         }
@@ -1320,8 +1331,8 @@ public partial class MainWindow : Window
         _namePromptTargetPane = pane;
         _namePromptMode = mode;
         NamePromptTitleText.Text = mode == NamePromptMode.NewFolder
-            ? "New Folder"
-            : "New Text File";
+            ? LocalizationManager.Instance["UI_NewFolder"]
+            : LocalizationManager.Instance["UI_NewTextFile"];
         NamePromptTextBox.Text = mode == NamePromptMode.NewTextFile ? "New Text Document.txt" : "New Folder";
         HideNamePromptError();
         PushChromeDimOverlay();
@@ -1671,4 +1682,135 @@ public partial class MainWindow : Window
         WindowState = WindowState == WindowState.Maximized
             ? WindowState.Normal
             : WindowState.Maximized;
+
+    private void OnSettingChanged(object? sender, string propertyName)
+    {
+        switch (propertyName)
+        {
+            case nameof(AppSettings.Theme):
+                ThemeManager.ApplyTheme(SettingsManager.Instance.Current.Theme);
+                foreach (var pane in _panes)
+                {
+                    pane.Control.ResetThemeBrushes();
+                    pane.Control.SetIsActive(pane == _activePane);
+                }
+                break;
+            case nameof(AppSettings.TimeFormat):
+                RefreshAllPaneDateDisplays();
+                break;
+            case nameof(AppSettings.Language):
+                LocalizationManager.Instance.LoadLanguage(SettingsManager.Instance.Current.Language);
+                ApplyLocalizedStrings();
+                PopulateSettingsControls();
+                break;
+        }
+    }
+
+    private void ApplyLocalizedStrings()
+    {
+        var loc = LocalizationManager.Instance;
+        Title = loc["UI_AppTitle"];
+        SettingsButton.ToolTip = loc["UI_Settings"];
+        AddPaneButton.ToolTip = loc["UI_AddPane"];
+        BackNavigationButton.ToolTip = loc["UI_Back"];
+        ForwardNavigationButton.ToolTip = loc["UI_Forward"];
+        SearchingIndicator.Text = loc["UI_Searching"];
+        ExtractingIndicator.Text = loc["UI_Extracting"];
+        ArchiveFileNameColumn.Header = loc["UI_ColumnFileName"];
+        ArchiveOriginalSizeColumn.Header = loc["UI_ColumnOriginalSize"];
+        ArchiveCompressedSizeColumn.Header = loc["UI_ColumnCompressedSize"];
+
+        foreach (var pane in _panes)
+            pane.Control.ApplyLocalization();
+    }
+
+    private void PopulateSettingsControls()
+    {
+        _suppressSettingsUiChange = true;
+        try
+        {
+            var loc = LocalizationManager.Instance;
+            SettingsThemeComboBox.Items.Clear();
+            SettingsThemeComboBox.Items.Add(loc["UI_ThemeDark"]);
+            SettingsThemeComboBox.Items.Add(loc["UI_ThemeLight"]);
+            SettingsThemeComboBox.SelectedIndex =
+                SettingsManager.Instance.Current.Theme == AppTheme.Light ? 1 : 0;
+
+            SettingsTimeFormatCheckBox.IsChecked =
+                SettingsManager.Instance.Current.TimeFormat == TimeFormatMode.Hour12;
+
+            var locales = LocalizationManager.Instance.GetAvailableLocales();
+            SettingsLanguageComboBox.ItemsSource = locales;
+            SettingsLanguageComboBox.SelectedItem = locales.FirstOrDefault(locale =>
+                locale.Code.Equals(
+                    SettingsManager.Instance.Current.Language,
+                    StringComparison.OrdinalIgnoreCase)) ?? locales.FirstOrDefault();
+        }
+        finally
+        {
+            _suppressSettingsUiChange = false;
+        }
+    }
+
+    private void RefreshAllPaneDateDisplays()
+    {
+        foreach (var pane in _panes)
+            pane.Control.RefreshDateColumnDisplay();
+    }
+
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) =>
+        ShowSettingsOverlay();
+
+    private void ShowSettingsOverlay()
+    {
+        PopulateSettingsControls();
+        SettingsOverlay.Visibility = Visibility.Visible;
+        PushChromeDimOverlay();
+        UiAnimationHelper.ShowOverlay(SettingsPanel);
+    }
+
+    private void HideSettingsOverlay()
+    {
+        if (SettingsOverlay.Visibility != Visibility.Visible)
+            return;
+
+        UiAnimationHelper.HideOverlay(SettingsPanel, () =>
+        {
+            SettingsOverlay.Visibility = Visibility.Collapsed;
+            PopChromeDimOverlay();
+        });
+    }
+
+    private void SettingsCloseButton_Click(object sender, RoutedEventArgs e) =>
+        HideSettingsOverlay();
+
+    private void SettingsThemeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSettingsUiChange || SettingsThemeComboBox.SelectedIndex < 0)
+            return;
+
+        var theme = SettingsThemeComboBox.SelectedIndex == 1
+            ? AppTheme.Light
+            : AppTheme.Dark;
+        SettingsManager.Instance.UpdateTheme(theme);
+    }
+
+    private void SettingsTimeFormatCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        var mode = SettingsTimeFormatCheckBox.IsChecked == true
+            ? TimeFormatMode.Hour12
+            : TimeFormatMode.Hour24;
+        SettingsManager.Instance.UpdateTimeFormat(mode);
+    }
+
+    private void SettingsLanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSettingsUiChange || SettingsLanguageComboBox.SelectedItem is not LocaleInfo locale)
+            return;
+
+        SettingsManager.Instance.UpdateLanguage(locale.Code);
+    }
 }
