@@ -12,6 +12,7 @@
     <!-- Frosted glass palette -->
     <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#D9F4F6FA" />
     <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="ModalPanelBackgroundBrush" Color="#FFF8FAFC" />
     <SolidColorBrush x:Key="BorderBrushDark" Color="#33000000" />
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1A1A1A" />
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5C5C5C" />

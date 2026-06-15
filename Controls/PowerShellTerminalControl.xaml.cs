@@ -60,6 +60,15 @@ public partial class PowerShellTerminalControl : UserControl
         }
     }
 
+    public void BeginStop()
+    {
+        if (!_isStarted && !_host.IsRunning)
+            return;
+
+        _isStarted = false;
+        _host.BeginStop();
+    }
+
     public void Stop()
     {
         _host.Stop();

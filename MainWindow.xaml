@@ -801,10 +801,11 @@
                 <Border x:Name="EditorOverlay"
                         Grid.Row="0"
                         Grid.Column="2"
+                        Panel.ZIndex="280"
                         Visibility="Collapsed"
                         RenderTransformOrigin="0.5,0.5"
                         Margin="4,8,4,8"
-                        Background="{DynamicResource PanelBackgroundBrush}"
+                        Background="{DynamicResource ModalPanelBackgroundBrush}"
                         CornerRadius="6"
                         BorderBrush="{DynamicResource BorderBrushDark}"
                         BorderThickness="1">
@@ -877,14 +878,19 @@
                 <!-- Archive viewer overlay -->
                 <Border x:Name="ArchiveOverlay"
                         Grid.Row="0"
-                        Grid.Column="2"
+                        Grid.RowSpan="3"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="300"
                         Visibility="Collapsed"
-                        RenderTransformOrigin="0.5,0.5"
-                        Margin="4,8,4,8"
-                        Background="{DynamicResource PanelBackgroundBrush}"
-                        CornerRadius="6"
-                        BorderBrush="{DynamicResource BorderBrushDark}"
-                        BorderThickness="1">
+                        Background="Transparent"
+                        IsHitTestVisible="True">
+                    <Border RenderTransformOrigin="0.5,0.5"
+                            Margin="4,8,4,8"
+                            Background="{DynamicResource ModalPanelBackgroundBrush}"
+                            CornerRadius="6"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -994,11 +1000,13 @@
                                        Visibility="Collapsed" />
                         </Grid>
                     </Grid>
+                    </Border>
                 </Border>
 
                 <!-- Custom name prompt -->
                 <Border x:Name="NamePromptOverlay"
                         Grid.Row="0"
+                        Grid.RowSpan="3"
                         Grid.ColumnSpan="3"
                         Panel.ZIndex="300"
                         Visibility="Collapsed"
@@ -1088,6 +1096,179 @@
                                         Style="{StaticResource DialogActionButtonStyle}"
                                         Content="{loc:Loc UI_Create}"
                                         Click="NamePromptCreateButton_Click" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Border>
+
+                <!-- Encrypt folder overlay -->
+                <Border x:Name="EncryptFolderOverlay"
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="310"
+                        Visibility="Collapsed"
+                        Background="Transparent"
+                        IsHitTestVisible="True">
+                    <Border x:Name="EncryptFolderPanel"
+                            Width="420"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Background="{DynamicResource GlassBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="18"
+                            RenderTransformOrigin="0.5,0.5"
+                            SnapsToDevicePixels="True">
+                        <StackPanel>
+                            <TextBlock x:Name="EncryptFolderTitleText"
+                                       Text="{loc:Loc UI_EncryptFolderTitle}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,12" />
+                            <TextBlock x:Name="EncryptFolderPathLabel"
+                                       Text="{loc:Loc UI_EncryptFolderSource}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       Margin="0,0,0,4" />
+                            <TextBlock x:Name="EncryptFolderPathText"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="12"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,0,0,10" />
+                            <TextBlock x:Name="EncryptFolderArchiveNameLabel"
+                                       Text="{loc:Loc UI_EncryptFolderArchiveName}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       Margin="0,0,0,4" />
+                            <TextBox x:Name="EncryptFolderArchiveNameTextBox"
+                                     Style="{DynamicResource AddressBarTextBoxStyle}"
+                                     Margin="0,0,0,10" />
+                            <TextBlock x:Name="EncryptFolderMethodLabel"
+                                       Text="{loc:Loc UI_EncryptFolderMethod}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       Margin="0,0,0,4" />
+                            <ComboBox x:Name="EncryptFolderMethodComboBox"
+                                      Margin="0,0,0,10"
+                                      SelectionChanged="EncryptFolderMethodComboBox_SelectionChanged" />
+                            <TextBlock x:Name="EncryptFolderPasswordLabel"
+                                       Text="{loc:Loc UI_EncryptFolderPassword}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       Margin="0,0,0,4" />
+                            <PasswordBox x:Name="EncryptFolderPasswordBox"
+                                         Margin="0,0,0,10"
+                                         Padding="10,6"
+                                         Background="{DynamicResource AddressBarBackgroundBrush}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         BorderThickness="0" />
+                            <TextBlock x:Name="EncryptFolderConfirmPasswordLabel"
+                                       Text="{loc:Loc UI_EncryptFolderConfirmPassword}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       Margin="0,0,0,4" />
+                            <PasswordBox x:Name="EncryptFolderConfirmPasswordBox"
+                                         Margin="0,0,0,4"
+                                         Padding="10,6"
+                                         Background="{DynamicResource AddressBarBackgroundBrush}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         BorderThickness="0"
+                                         KeyDown="EncryptFolderConfirmPasswordBox_KeyDown" />
+                            <TextBlock x:Name="EncryptFolderErrorText"
+                                       Foreground="{DynamicResource ErrorTextBrush}"
+                                       FontSize="11"
+                                       Margin="2,8,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="2"
+                                        x:Name="EncryptFolderCancelButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_Cancel}"
+                                        Click="EncryptFolderCancelButton_Click" />
+                                <Button Grid.Column="4"
+                                        x:Name="EncryptFolderCreateButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_EncryptFolderCreate}"
+                                        Click="EncryptFolderCreateButton_Click" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Border>
+
+                <!-- Archive password overlay -->
+                <Border x:Name="ArchivePasswordOverlay"
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="315"
+                        Visibility="Collapsed"
+                        Background="Transparent"
+                        IsHitTestVisible="True">
+                    <Border x:Name="ArchivePasswordPanel"
+                            Width="360"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Background="{DynamicResource GlassBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="18"
+                            RenderTransformOrigin="0.5,0.5"
+                            SnapsToDevicePixels="True">
+                        <StackPanel>
+                            <TextBlock x:Name="ArchivePasswordTitleText"
+                                       Text="{loc:Loc UI_ArchivePasswordTitle}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,12" />
+                            <TextBlock x:Name="ArchivePasswordHintText"
+                                       Text="{loc:Loc UI_ArchivePasswordHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,10" />
+                            <PasswordBox x:Name="ArchivePasswordBox"
+                                         Padding="10,6"
+                                         Background="{DynamicResource AddressBarBackgroundBrush}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         BorderThickness="0"
+                                         KeyDown="ArchivePasswordBox_KeyDown" />
+                            <TextBlock x:Name="ArchivePasswordErrorText"
+                                       Foreground="{DynamicResource ErrorTextBrush}"
+                                       FontSize="11"
+                                       Margin="2,8,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="2"
+                                        x:Name="ArchivePasswordCancelButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_Cancel}"
+                                        Click="ArchivePasswordCancelButton_Click" />
+                                <Button Grid.Column="4"
+                                        x:Name="ArchivePasswordConfirmButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_ArchivePasswordUnlock}"
+                                        Click="ArchivePasswordConfirmButton_Click" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -1695,6 +1876,7 @@
                     <GridSplitter x:Name="TerminalSplitter"
                                   Grid.Row="1"
                                   Grid.ColumnSpan="3"
+                                  Panel.ZIndex="20"
                                   Height="6"
                                   HorizontalAlignment="Stretch"
                                   VerticalAlignment="Stretch"
@@ -1707,6 +1889,7 @@
                     <controls:PowerShellTerminalControl x:Name="PowerShellTerminal"
                                                         Grid.Row="2"
                                                         Grid.ColumnSpan="3"
+                                                        Panel.ZIndex="20"
                                                         Visibility="Collapsed"
                                                         CloseRequested="PowerShellTerminal_CloseRequested"
                                                         WorkingDirectoryChanged="PowerShellTerminal_WorkingDirectoryChanged" />

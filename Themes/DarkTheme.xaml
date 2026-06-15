@@ -12,6 +12,7 @@
     <!-- Core palette -->
     <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#B3121212" />
     <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#66181818" />
+    <SolidColorBrush x:Key="ModalPanelBackgroundBrush" Color="#FF141414" />
     <SolidColorBrush x:Key="BorderBrushDark" Color="#33FFFFFF" />
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F0F0F0" />
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#B0B0B0" />
