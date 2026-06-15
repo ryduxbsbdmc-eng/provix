@@ -121,6 +121,42 @@
             </Setter>
         </Style>
 
+        <Style x:Key="DialogDeleteCommitButtonStyle" TargetType="Button" BasedOn="{StaticResource DialogActionButtonStyle}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushDark}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#FFFF9A9A" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#44FF6B6B" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#88FF6B6B" />
+                                <Setter Property="Foreground" Value="#FFFFECEC" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource DialogDangerPressedBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Editor chrome -->
         <Style x:Key="EditorActionButtonStyle" TargetType="Button" BasedOn="{StaticResource DialogActionButtonStyle}">
             <Setter Property="MinWidth" Value="72" />
@@ -790,6 +826,7 @@
                 <Border x:Name="NamePromptOverlay"
                         Grid.Row="0"
                         Grid.ColumnSpan="3"
+                        Panel.ZIndex="300"
                         Visibility="Collapsed"
                         Background="Transparent"
                         IsHitTestVisible="True">
@@ -809,6 +846,45 @@
                                        FontSize="14"
                                        FontWeight="SemiBold"
                                        Margin="0,0,0,12" />
+                            <ListView x:Name="GitCommitFilesList"
+                                      Height="140"
+                                      Margin="0,0,0,12"
+                                      Background="{DynamicResource PanelBackgroundBrush}"
+                                      BorderBrush="{DynamicResource BorderBrushDark}"
+                                      BorderThickness="1"
+                                      Visibility="Collapsed"
+                                      ItemContainerStyle="{DynamicResource ExplorerListViewItemStyle}">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="6" Height="6" Margin="4,0,10,0" VerticalAlignment="Center">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Modified">
+                                                                <Setter Property="Fill" Value="{DynamicResource GitModifiedBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Added">
+                                                                <Setter Property="Fill" Value="{DynamicResource GitAddedBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Untracked">
+                                                                <Setter Property="Fill" Value="{DynamicResource GitUntrackedBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Deleted">
+                                                                <Setter Property="Fill" Value="{DynamicResource GitDeletedBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="UpdatedButUnmerged">
+                                                                <Setter Property="Fill" Value="{DynamicResource GitConflictBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+                                            <TextBlock Text="{Binding FilePath}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
                             <TextBox x:Name="NamePromptTextBox"
                                      Style="{DynamicResource AddressBarTextBoxStyle}"
                                      KeyDown="NamePromptTextBox_KeyDown" />
@@ -905,6 +981,192 @@
                                     Click="SettingsCloseButton_Click" />
                         </StackPanel>
                     </Border>
+                </Border>
+
+                <!-- Git commit history & restore -->
+                <Border x:Name="CommitHistoryOverlay"
+                        Grid.Row="0"
+                        Grid.ColumnSpan="3"
+                        Visibility="Collapsed"
+                        Background="Transparent"
+                        IsHitTestVisible="True">
+                    <Grid>
+                        <Border x:Name="CommitHistoryPanel"
+                                Width="560"
+                                MaxHeight="520"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                RenderTransformOrigin="0.5,0.5"
+                                Background="{DynamicResource GlassBackgroundBrush}"
+                                BorderBrush="{DynamicResource BorderBrushDark}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="18"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock x:Name="CommitHistoryTitleText"
+                                       Grid.Row="0"
+                                       Text="{loc:Loc UI_GitVersionHistory}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,12" />
+
+                            <Border Grid.Row="1"
+                                    Background="{DynamicResource PanelBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushDark}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Margin="0,0,0,12"
+                                    MinHeight="220"
+                                    MaxHeight="360">
+                                <ListBox x:Name="CommitHistoryListBox"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         ItemContainerStyle="{DynamicResource CommitHistoryListBoxItemStyle}"
+                                         SelectionChanged="CommitHistoryListBox_SelectionChanged">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock FontSize="12">
+                                                    <Run Text="{Binding Hash}"
+                                                         FontWeight="SemiBold"
+                                                         FontFamily="Consolas" />
+                                                    <Run Text="  ·  " />
+                                                    <Run Text="{Binding Date}" />
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Message}"
+                                                           FontSize="12"
+                                                           Margin="0,4,0,0"
+                                                           TextWrapping="Wrap"
+                                                           Opacity="0.92" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Border>
+
+                            <TextBlock x:Name="CommitHistoryWarningText"
+                                       Grid.Row="2"
+                                       Text="{loc:Loc UI_GitRestoreWarning}"
+                                       TextWrapping="Wrap"
+                                       Foreground="#FFFFB86B"
+                                       FontSize="12"
+                                       LineHeight="18"
+                                       Margin="0,0,0,10"
+                                       Visibility="Collapsed" />
+
+                            <TextBlock x:Name="CommitHistoryErrorText"
+                                       Grid.Row="3"
+                                       Foreground="{DynamicResource ErrorTextBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed"
+                                       Margin="0,0,0,8" />
+
+                            <Grid Grid.Row="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="2"
+                                        x:Name="CommitHistoryCancelButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_Cancel}"
+                                        Click="CommitHistoryCancelButton_Click" />
+                                <Button Grid.Column="4"
+                                        x:Name="CommitHistoryDeleteCommitButton"
+                                        Style="{StaticResource DialogDeleteCommitButtonStyle}"
+                                        IsEnabled="False"
+                                        Click="CommitHistoryDeleteCommitButton_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE74D;"
+                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="11"
+                                                   Margin="0,0,6,0"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{loc:Loc UI_GitDeleteCommit}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="6"
+                                        x:Name="CommitHistoryRestoreButton"
+                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Content="{loc:Loc UI_GitRestoreSelected}"
+                                        IsEnabled="False"
+                                        Click="CommitHistoryRestoreButton_Click" />
+                                <Button Grid.Column="6"
+                                        x:Name="CommitHistoryConfirmRestoreButton"
+                                        Style="{StaticResource DialogDangerButtonStyle}"
+                                        Content="{loc:Loc UI_GitConfirmRestore}"
+                                        Visibility="Collapsed"
+                                        Click="CommitHistoryConfirmRestoreButton_Click" />
+                            </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Border x:Name="CommitDeleteConfirmOverlay"
+                                Visibility="Collapsed"
+                                Background="#99000000"
+                                SnapsToDevicePixels="True">
+                            <Border Width="400"
+                                    VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Background="{DynamicResource GlassBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushDark}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="18"
+                                    SnapsToDevicePixels="True">
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Loc UI_GitDeleteCommitTitle}"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Margin="0,0,0,10" />
+                                    <TextBlock Text="{loc:Loc UI_GitDeleteCommitMessage}"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               FontSize="13"
+                                               LineHeight="20"
+                                               Margin="0,0,0,14" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="2"
+                                                x:Name="CommitDeleteConfirmCancelButton"
+                                                Style="{StaticResource DialogActionButtonStyle}"
+                                                Content="{loc:Loc UI_Cancel}"
+                                                Click="CommitDeleteConfirmCancelButton_Click" />
+                                        <Button Grid.Column="4"
+                                                x:Name="CommitDeleteConfirmYesButton"
+                                                Style="{StaticResource DialogDangerButtonStyle}"
+                                                Content="{loc:Loc UI_GitDeleteCommitYes}"
+                                                Click="CommitDeleteConfirmYesButton_Click" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </Border>
+                    </Grid>
                 </Border>
 
                 <!-- Delete confirmation dialog -->

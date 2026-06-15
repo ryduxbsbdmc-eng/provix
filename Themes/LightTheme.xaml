@@ -59,6 +59,14 @@
     <SolidColorBrush x:Key="SplitterHoverBrush" Color="#550078D4" />
     <SolidColorBrush x:Key="ShadowColor" Color="#66000000" />
 
+    <!-- Git Status Colors -->
+    <SolidColorBrush x:Key="GitModifiedBrush" Color="#B17E00" />
+    <SolidColorBrush x:Key="GitAddedBrush" Color="#22863A" />
+    <SolidColorBrush x:Key="GitDeletedBrush" Color="#D73A49" />
+    <SolidColorBrush x:Key="GitUntrackedBrush" Color="#22863A" />
+    <SolidColorBrush x:Key="GitIgnoredBrush" Color="#6A737D" />
+    <SolidColorBrush x:Key="GitConflictBrush" Color="#E36209" />
+
     <!-- Animation / selection color tokens -->
     <Color x:Key="TransparentFillColor">#00000000</Color>
     <Color x:Key="HoverFillColor">#18000000</Color>

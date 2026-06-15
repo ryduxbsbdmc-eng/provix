@@ -61,6 +61,77 @@
                 </Button>
             </Grid>
 
+            <Grid x:Name="GitStatusBar"
+                  DockPanel.Dock="Bottom"
+                  Height="26"
+                  Background="{DynamicResource ButtonChromeBrush}"
+                  Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center">
+                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                               Text="&#xE9A1;"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,1,6,0" />
+                    <TextBlock x:Name="GitBranchText"
+                               Text="main"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Margin="12,0,0,0"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="GitStatusText"
+                               Text="0 changes"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <Button x:Name="GitBranchButton"
+                        Grid.Column="3"
+                        Content="Switch Branch"
+                        FontSize="10"
+                        Padding="8,2"
+                        Margin="0,0,4,0"
+                        Height="20"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="GitBranchButton_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="4">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
+
             <Grid x:Name="FileListHost"
                   Margin="4,0,4,8"
                   ClipToBounds="True">
@@ -101,6 +172,22 @@
                                   Tag="Delete"
                                   Click="DeleteMenuItem_Click" />
                         <Separator />
+                        <MenuItem x:Name="GitInitMenuItem"
+                                  Header="{loc:Loc UI_GitInit}"
+                                  Tag="GitInit"
+                                  Click="GitInitMenuItem_Click" />
+                        <MenuItem x:Name="GitCommitMenuItem"
+                                  Header="{loc:Loc UI_GitCommitAll}"
+                                  Tag="GitCommit"
+                                  Click="GitCommitMenuItem_Click" />
+                        <MenuItem x:Name="GitAmendMenuItem"
+                                  Header="{loc:Loc UI_GitAmendLastCommit}"
+                                  Tag="GitAmend"
+                                  Click="GitAmendMenuItem_Click" />
+                        <MenuItem x:Name="GitHistoryMenuItem"
+                                  Header="{loc:Loc UI_GitVersionHistory}"
+                                  Tag="GitHistory"
+                                  Click="GitHistoryMenuItem_Click" />
                         <MenuItem x:Name="ShowWindowsMenuMenuItem"
                                   Header="{loc:Loc UI_ShowWindowsMenu}"
                                   Tag="ShowWindowsMenu"
@@ -113,6 +200,14 @@
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Grid Width="12" Margin="0,0,4,0">
+                                            <Ellipse x:Name="GitIndicator"
+                                                     Width="6"
+                                                     Height="6"
+                                                     VerticalAlignment="Center"
+                                                     HorizontalAlignment="Center"
+                                                     Visibility="Collapsed" />
+                                        </Grid>
                                         <Image Source="{Binding Icon}"
                                                Width="16"
                                                Height="16"
@@ -124,6 +219,38 @@
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding GitStatus}" Value="Modified">
+                                            <Setter TargetName="GitIndicator" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="GitIndicator" Property="Fill" Value="{DynamicResource GitModifiedBrush}" />
+                                            <Setter TargetName="GitIndicator" Property="ToolTip" Value="Modified" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding GitStatus}" Value="Added">
+                                            <Setter TargetName="GitIndicator" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="GitIndicator" Property="Fill" Value="{DynamicResource GitAddedBrush}" />
+                                            <Setter TargetName="GitIndicator" Property="ToolTip" Value="Added" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding GitStatus}" Value="Untracked">
+                                            <Setter TargetName="GitIndicator" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="GitIndicator" Property="Fill" Value="{DynamicResource GitUntrackedBrush}" />
+                                            <Setter TargetName="GitIndicator" Property="ToolTip" Value="Untracked" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding GitStatus}" Value="Deleted">
+                                            <Setter TargetName="GitIndicator" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="GitIndicator" Property="Fill" Value="{DynamicResource GitDeletedBrush}" />
+                                            <Setter TargetName="GitIndicator" Property="ToolTip" Value="Deleted" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding GitStatus}" Value="Ignored">
+                                            <Setter TargetName="GitIndicator" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="GitIndicator" Property="Fill" Value="{DynamicResource GitIgnoredBrush}" />
+                                            <Setter TargetName="GitIndicator" Property="ToolTip" Value="Ignored" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding GitStatus}" Value="UpdatedButUnmerged">
+                                            <Setter TargetName="GitIndicator" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="GitIndicator" Property="Fill" Value="{DynamicResource GitConflictBrush}" />
+                                            <Setter TargetName="GitIndicator" Property="ToolTip" Value="Conflict" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
