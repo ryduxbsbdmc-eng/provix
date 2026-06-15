@@ -179,12 +179,12 @@
                                   Header="{loc:Loc UI_Delete}"
                                   Tag="Delete"
                                   Click="DeleteMenuItem_Click" />
-                        <Separator />
+                        <Separator x:Name="AiMenuSeparator" />
                         <MenuItem x:Name="AiExecuteQueryMenuItem"
                                   Header="{loc:Loc UI_AiExecuteQuery}"
                                   Tag="AiExecuteQuery"
                                   Click="AiExecuteQueryMenuItem_Click" />
-                        <Separator />
+                        <Separator x:Name="GitMenuSeparator" />
                         <MenuItem x:Name="GitInitMenuItem"
                                   Header="{loc:Loc UI_GitInit}"
                                   Tag="GitInit"

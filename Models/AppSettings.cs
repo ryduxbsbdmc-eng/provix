@@ -4,9 +4,12 @@ namespace FileExplorer.Models;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 5;
+    public int SettingsVersion { get; set; } = 7;
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppTheme Theme { get; set; } = AppTheme.Dark;
+
+    public string CustomThemePath { get; set; } = string.Empty;
 
     public TimeFormatMode TimeFormat { get; set; } = TimeFormatMode.Hour24;
 
@@ -23,7 +26,12 @@ public sealed class AppSettings
 
     public bool UseBuiltInMediaViewer { get; set; } = true;
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AiProvider AiProvider { get; set; } = AiProvider.OpenRouter;
+
     public string OpenRouterApiKey { get; set; } = string.Empty;
+
+    public string LocalAiEndpoint { get; set; } = string.Empty;
 
     public string PreferredAiModel { get; set; } = "openai/gpt-4o-mini";
 

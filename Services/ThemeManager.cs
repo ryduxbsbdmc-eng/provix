@@ -7,13 +7,29 @@ public static class ThemeManager
 {
     private static ResourceDictionary? _activeThemeDictionary;
 
-    public static void ApplyTheme(AppTheme theme)
+    public static void ApplyTheme(AppTheme theme, string? customThemePath = null)
     {
-        var source = theme == AppTheme.Light
-            ? new Uri("Themes/LightTheme.xaml", UriKind.Relative)
-            : new Uri("Themes/DarkTheme.xaml", UriKind.Relative);
+        theme = ThemeCatalog.Normalize(theme);
 
-        var newTheme = new ResourceDictionary { Source = source };
+        if (theme == AppTheme.Custom && !string.IsNullOrWhiteSpace(customThemePath))
+        {
+            var customDictionary = CustomThemeLoader.Load(customThemePath);
+            if (customDictionary is not null)
+            {
+                ReplaceActiveDictionary(customDictionary);
+                return;
+            }
+        }
+
+        if (theme == AppTheme.Custom)
+            theme = AppTheme.Dark;
+
+        var source = new Uri(ThemeCatalog.GetResourcePath(theme), UriKind.Relative);
+        ReplaceActiveDictionary(new ResourceDictionary { Source = source });
+    }
+
+    private static void ReplaceActiveDictionary(ResourceDictionary newTheme)
+    {
         var merged = Application.Current.Resources.MergedDictionaries;
 
         if (_activeThemeDictionary is not null)

@@ -1,10 +1,13 @@
 using System.IO;
+using System.Text;
 using FileExplorer.Models;
 
 namespace FileExplorer.Services;
 
 public sealed class AiCommandExecutor
 {
+    private const int MaxWriteBytes = 512 * 1024;
+
     public AiCommandResult ExecuteAll(string baseDirectory, IReadOnlyList<AiCommand> commands)
     {
         if (commands.Count == 0)
@@ -17,16 +20,20 @@ public sealed class AiCommandExecutor
 
         var executed = 0;
         string? lastError = null;
+        string? lastSuccessDetail = null;
 
         foreach (var command in commands)
         {
             try
             {
-                if (!TryExecuteSingle(basePath, command, out var error))
+                if (!TryExecuteSingle(basePath, command, out var error, out var successDetail))
                 {
                     lastError = error;
                     break;
                 }
+
+                if (!string.IsNullOrWhiteSpace(successDetail))
+                    lastSuccessDetail = successDetail;
 
                 executed++;
             }
@@ -51,24 +58,123 @@ public sealed class AiCommandExecutor
             return AiCommandResult.Failed(lastError ?? "Unable to execute operations.");
 
         var message = executed == commands.Count
-            ? $"Completed {executed} operation(s)."
+            ? BuildSuccessMessage(executed, lastSuccessDetail)
             : $"Completed {executed} of {commands.Count} operation(s). {lastError}";
 
         return AiCommandResult.Succeeded(executed, message);
     }
 
-    private bool TryExecuteSingle(string basePath, AiCommand command, out string? error)
+    private static string BuildSuccessMessage(int executed, string? lastSuccessDetail)
+    {
+        if (!string.IsNullOrWhiteSpace(lastSuccessDetail))
+            return $"Completed {executed} operation(s). {lastSuccessDetail}";
+
+        return $"Completed {executed} operation(s).";
+    }
+
+    private bool TryExecuteSingle(
+        string basePath,
+        AiCommand command,
+        out string? error,
+        out string? successDetail)
     {
         error = null;
+        successDetail = null;
         var op = command.Op.Trim().ToUpperInvariant();
 
-        return op switch
+        var result = op switch
         {
             "MKDIR" => TryMkdir(basePath, command.Path, out error),
             "MOVE" => TryMove(basePath, command.Src, command.Dest, out error),
             "RENAME" => TryRename(basePath, command.Src, command.Dest, out error),
+            "WRITE" => TryWrite(basePath, command.Path, command.Content, out error),
+            "DELETE" => TryDelete(basePath, command.Path, out error),
+            "GIT_COMMIT" => TryGitCommit(basePath, command.Message, out error, out successDetail),
             _ => Fail($"Unsupported operation: {command.Op}", out error)
         };
+
+        return result;
+    }
+
+    private static bool TryGitCommit(
+        string basePath,
+        string? message,
+        out string? error,
+        out string? successDetail)
+    {
+        successDetail = null;
+
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return Fail("Git is not installed or not on PATH.", out error);
+
+        if (string.IsNullOrWhiteSpace(message))
+            return Fail("GIT_COMMIT requires a message.", out error);
+
+        var repositoryRoot = GitRepositoryHelper.GetGitRepositoryRoot(basePath);
+        if (repositoryRoot is null)
+            return Fail("Not a git repository. Use Git Init first.", out error);
+
+        var result = GitService.CommitAllAsync(repositoryRoot, message.Trim()).GetAwaiter().GetResult();
+        if (!result.Success)
+        {
+            error = result.Message;
+            return false;
+        }
+
+        successDetail = result.Message;
+        error = null;
+        return true;
+    }
+
+    private static bool TryWrite(string basePath, string? relativePath, string? content, out string? error)
+    {
+        error = null;
+        content ??= string.Empty;
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return Fail("WRITE requires a path.", out error);
+
+        if (!TryResolveSafePath(basePath, relativePath, out var fullPath, out error))
+            return false;
+
+        var contentBytes = Encoding.UTF8.GetByteCount(content);
+        if (contentBytes > MaxWriteBytes)
+            return Fail($"WRITE content exceeds {MaxWriteBytes / 1024} KB.", out error);
+
+        var parent = Path.GetDirectoryName(fullPath);
+        if (!string.IsNullOrEmpty(parent) && !Directory.Exists(parent))
+            Directory.CreateDirectory(parent);
+
+        File.WriteAllText(fullPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return true;
+    }
+
+    private static bool TryDelete(string basePath, string? relativePath, out string? error)
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return Fail("DELETE requires a path.", out error);
+
+        if (!TryResolveSafePath(basePath, relativePath, out var fullPath, out error))
+            return false;
+
+        if (File.Exists(fullPath))
+        {
+            File.Delete(fullPath);
+            return true;
+        }
+
+        if (Directory.Exists(fullPath))
+        {
+            if (Directory.EnumerateFileSystemEntries(fullPath).Any())
+                return Fail($"Folder is not empty: {relativePath}", out error);
+
+            Directory.Delete(fullPath);
+            return true;
+        }
+
+        return Fail($"Path not found: {relativePath}", out error);
     }
 
     private static bool TryMkdir(string basePath, string? relativePath, out string? error)

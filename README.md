@@ -30,3 +30,10 @@ dotnet publish FileExplorer.csproj -c Release -r win-x64 --self-contained true ^
 ```
 ---
 **Provix** — файловый менеджер с акцентом на удобство разработчика: Git, терминал, IDE и ИИ прямо в проводнике.
+
+## Лицензия
+
+**PolyForm Noncommercial 1.0.0** — использование и кастомизация бесплатны, **продажа запрещена**.
+
+- Полный текст: [LICENSE](LICENSE)
+- Кратко по-русски: [LICENSE.ru.md](LICENSE.ru.md)

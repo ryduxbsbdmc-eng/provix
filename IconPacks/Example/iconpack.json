@@ -1,5 +1,9 @@
 {
   "name": "Example icon pack",
+  "version": "1.1.0",
+  "description": "Sample pack with common file types. Sync from Provix to update.",
+  "author": "Provix",
+  "updatedAt": "2026-06-15",
   "folder": "folder.png",
   "file": "file.png",
   "drive": "drive.png",

@@ -71,6 +71,10 @@ public partial class DirectoryPaneControl : UserControl
 
     public MenuItem AiExecuteQueryMenuItemControl => AiExecuteQueryMenuItem;
 
+    public Separator AiMenuSeparatorControl => AiMenuSeparator;
+
+    public Separator GitMenuSeparatorControl => GitMenuSeparator;
+
     public Separator ExtractArchiveSeparatorControl => ExtractArchiveSeparator;
     public Separator EncryptFolderSeparatorControl => EncryptFolderSeparator;
 
@@ -634,8 +638,41 @@ public partial class DirectoryPaneControl : UserControl
         GitHistoryRequested?.Invoke(this, new GitDirectoryEventArgs { TargetDirectory = directory });
     }
 
+    private bool _gitFeaturesAvailable = true;
+    private bool _aiFeaturesAvailable = true;
+
+    public void SetAiFeaturesAvailable(bool available)
+    {
+        _aiFeaturesAvailable = available;
+
+        var visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        AiMenuSeparator.Visibility = visibility;
+        AiExecuteQueryMenuItem.Visibility = visibility;
+    }
+
+    public void SetGitFeaturesAvailable(bool available)
+    {
+        _gitFeaturesAvailable = available;
+
+        var visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        GitMenuSeparator.Visibility = visibility;
+        GitInitMenuItem.Visibility = visibility;
+        GitCommitMenuItem.Visibility = visibility;
+        GitAmendMenuItem.Visibility = visibility;
+        GitHistoryMenuItem.Visibility = visibility;
+
+        if (!available)
+            GitStatusBar.Visibility = Visibility.Collapsed;
+    }
+
     public void UpdateGitStatus(bool isRepo, string branch, int changeCount)
     {
+        if (!_gitFeaturesAvailable)
+        {
+            GitStatusBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         var wasVisible = GitStatusBar.Visibility == Visibility.Visible;
         GitStatusBar.Visibility = isRepo ? Visibility.Visible : Visibility.Collapsed;
         if (!isRepo)

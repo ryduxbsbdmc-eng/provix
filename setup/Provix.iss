@@ -2,7 +2,7 @@
 ; Build: build-setup.cmd
 
 #define MyAppName "Provix"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "Provix"
 #define MyAppExeName "FileExplorer.exe"
 #define MyAppSourceDir "..\publish"
@@ -39,6 +39,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#MyAppSourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppSourceDir}\Locales\*"; DestDir: "{app}\Locales"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE.ru.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

@@ -265,8 +265,9 @@ public partial class MainWindow
         _suppressSettingsUiChange = true;
         try
         {
-            SettingsIconStyleComboBox.SelectedIndex = IconStyleToIndex(FileIconStyle.Custom);
+            SelectIconPackComboBoxItem(FileIconStyle.Custom, packFolder);
             UpdateCustomIconPackPanelVisibility();
+            UpdateIconPackDetailsText();
         }
         finally
         {

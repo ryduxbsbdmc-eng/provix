@@ -67,8 +67,44 @@ public sealed class SettingsManager
             return;
 
         Current.Theme = theme;
+        if (theme != AppTheme.Custom)
+            Current.CustomThemePath = string.Empty;
+
         Save();
         SettingChanged?.Invoke(this, nameof(AppSettings.Theme));
+    }
+
+    public void UpdateCustomThemePath(string path)
+    {
+        var normalized = path.Trim();
+        if (string.Equals(Current.CustomThemePath, normalized, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Current.CustomThemePath = normalized;
+        if (!string.IsNullOrWhiteSpace(normalized))
+            Current.Theme = AppTheme.Custom;
+
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.Theme));
+        SettingChanged?.Invoke(this, nameof(AppSettings.CustomThemePath));
+    }
+
+    public void ApplyThemeSelection(AppTheme theme, string? customThemePath)
+    {
+        theme = ThemeCatalog.Normalize(theme);
+        var normalizedPath = customThemePath?.Trim() ?? string.Empty;
+
+        var changed = Current.Theme != theme ||
+                      !string.Equals(Current.CustomThemePath, normalizedPath, StringComparison.OrdinalIgnoreCase);
+        if (!changed)
+            return;
+
+        Current.Theme = theme;
+        Current.CustomThemePath = theme == AppTheme.Custom ? normalizedPath : string.Empty;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.Theme));
+        if (theme == AppTheme.Custom)
+            SettingChanged?.Invoke(this, nameof(AppSettings.CustomThemePath));
     }
 
     public void UpdateTimeFormat(TimeFormatMode timeFormat)
@@ -100,6 +136,32 @@ public sealed class SettingsManager
         Current.OpenRouterApiKey = normalized;
         Save();
         SettingChanged?.Invoke(this, nameof(AppSettings.OpenRouterApiKey));
+    }
+
+    public void UpdateAiProvider(AiProvider provider)
+    {
+        provider = AiProviderCatalog.Normalize(provider);
+        if (Current.AiProvider == provider)
+            return;
+
+        Current.AiProvider = provider;
+        Current.PreferredAiModel = AiProviderCatalog.GetDefaultModel(provider);
+        Current.LocalAiEndpoint = string.Empty;
+
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.AiProvider));
+        SettingChanged?.Invoke(this, nameof(AppSettings.PreferredAiModel));
+    }
+
+    public void UpdateLocalAiEndpoint(string endpoint)
+    {
+        var normalized = endpoint.Trim();
+        if (string.Equals(Current.LocalAiEndpoint, normalized, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Current.LocalAiEndpoint = normalized;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.LocalAiEndpoint));
     }
 
     public void UpdatePreferredAiModel(string model)
@@ -292,6 +354,12 @@ public sealed class SettingsManager
 
         settings.CustomIconPackPath ??= string.Empty;
         settings.CustomFontPath ??= string.Empty;
+        settings.CustomThemePath ??= string.Empty;
         settings.UiFontId = BuiltInFontCatalog.NormalizeFontId(settings.UiFontId, settings.CustomFontPath);
+        settings.Theme = ThemeCatalog.Normalize(settings.Theme);
+        if (settings.Theme == AppTheme.Custom && string.IsNullOrWhiteSpace(settings.CustomThemePath))
+            settings.Theme = AppTheme.Dark;
+
+        AiProviderCatalog.NormalizeSettings(settings);
     }
 }

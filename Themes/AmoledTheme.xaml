@@ -1,0 +1,73 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#33BB86FC" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#22BB86FC" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="Transparent" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#FFFFFF" />
+
+    <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#FF000000" />
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#990A0A0A" />
+    <SolidColorBrush x:Key="ModalPanelBackgroundBrush" Color="#FF0A0A0A" />
+    <SolidColorBrush x:Key="BorderBrushDark" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A0A0A0" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#BB86FC" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="SelectionFillBrush" Color="#33BB86FC" />
+    <SolidColorBrush x:Key="SelectionFillHoverBrush" Color="#44BB86FC" />
+    <SolidColorBrush x:Key="SelectionFillInactiveBrush" Color="#22BB86FC" />
+    <SolidColorBrush x:Key="SelectionBorderBrush" Color="#BB86FC" />
+    <SolidColorBrush x:Key="SelectionBorderInactiveBrush" Color="#66BB86FC" />
+    <SolidColorBrush x:Key="SelectionForegroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SelectedBrush" Color="#33BB86FC" />
+    <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#66000000" />
+
+    <SolidColorBrush x:Key="AppControlBackground" Color="#66000000" />
+    <SolidColorBrush x:Key="AppTextForeground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AppControlBorderBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="AppControlHoverBackground" Color="#12FFFFFF" />
+    <SolidColorBrush x:Key="AppControlPressedBackground" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="AppPopupBackground" Color="#F00A0A0A" />
+    <SolidColorBrush x:Key="AppPopupBorderBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="OpaqueInputBackgroundBrush" Color="#FF000000" />
+
+    <SolidColorBrush x:Key="CloseHoverBrush" Color="#CF6679" />
+    <SolidColorBrush x:Key="DimOverlayBrush" Color="#CC000000" />
+    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#66000000" />
+    <SolidColorBrush x:Key="OverlayHeaderBrush" Color="#66000000" />
+    <SolidColorBrush x:Key="ButtonChromeBrush" Color="#44000000" />
+    <SolidColorBrush x:Key="ButtonPressedBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="DialogButtonBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="DialogButtonHoverBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="DialogDangerBrush" Color="#55CF6679" />
+    <SolidColorBrush x:Key="DialogDangerHoverBrush" Color="#88CF6679" />
+    <SolidColorBrush x:Key="DialogDangerPressedBrush" Color="#CF6679" />
+    <SolidColorBrush x:Key="ContextMenuBackgroundBrush" Color="#F00A0A0A" />
+    <SolidColorBrush x:Key="SeparatorBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="ColumnHeaderBackgroundBrush" Color="#44000000" />
+    <SolidColorBrush x:Key="ScrollBarThumbBrush" Color="#44FFFFFF" />
+    <SolidColorBrush x:Key="EditorBackgroundBrush" Color="#66000000" />
+    <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#44000000" />
+    <SolidColorBrush x:Key="ErrorTextBrush" Color="#CF6679" />
+    <SolidColorBrush x:Key="PaneInactiveBorderBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="SplitterIdleBrush" Color="#44000000" />
+    <SolidColorBrush x:Key="SplitterHoverBrush" Color="#55BB86FC" />
+    <SolidColorBrush x:Key="ShadowColor" Color="Black" />
+
+    <SolidColorBrush x:Key="GitModifiedBrush" Color="#FFD54F" />
+    <SolidColorBrush x:Key="GitAddedBrush" Color="#81C784" />
+    <SolidColorBrush x:Key="GitDeletedBrush" Color="#CF6679" />
+    <SolidColorBrush x:Key="GitUntrackedBrush" Color="#81C784" />
+    <SolidColorBrush x:Key="GitIgnoredBrush" Color="#555555" />
+    <SolidColorBrush x:Key="GitConflictBrush" Color="#FFB74D" />
+
+    <Color x:Key="TransparentFillColor">#00000000</Color>
+    <Color x:Key="HoverFillColor">#12FFFFFF</Color>
+    <Color x:Key="SelectionFillColor">#33BB86FC</Color>
+    <Color x:Key="SelectionFillHoverColor">#44BB86FC</Color>
+    <Color x:Key="SelectionBorderColor">#BB86FC</Color>
+
+</ResourceDictionary>

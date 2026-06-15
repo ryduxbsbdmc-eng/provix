@@ -127,6 +127,10 @@ public sealed class IconPackEditorService
         var manifest = new IconPackManifest
         {
             Name = PackName.Trim(),
+            Version = string.IsNullOrWhiteSpace(ReadManifestVersion()) ? "1.0.0" : ReadManifestVersion()!,
+            Author = "Provix",
+            UpdatedAt = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+            Description = ReadManifestDescription(),
             Folder = FolderIconFile ?? "folder.png",
             File = FileIconFile ?? "file.png",
             Drive = DriveIconFile ?? "drive.png",
@@ -139,6 +143,36 @@ public sealed class IconPackEditorService
         var manifestPath = Path.Combine(PackFolder, "iconpack.json");
         var json = JsonSerializer.Serialize(manifest, JsonOptions);
         File.WriteAllText(manifestPath, json);
+    }
+
+    private string? ReadManifestVersion()
+    {
+        var manifest = ReadExistingManifest();
+        return manifest?.Version;
+    }
+
+    private string ReadManifestDescription()
+    {
+        return ReadExistingManifest()?.Description ?? string.Empty;
+    }
+
+    private IconPackManifest? ReadExistingManifest()
+    {
+        if (!HasPackFolder)
+            return null;
+
+        var manifestPath = FindManifestPath(PackFolder);
+        if (manifestPath is null)
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<IconPackManifest>(File.ReadAllText(manifestPath), JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public string ImportSpecialIcon(IconPackSpecialKind kind, string sourceImagePath)

@@ -222,6 +222,7 @@ public partial class MainWindow : Window
         ApplyFileIconSettings();
         ApplyCustomFont();
         LoadDriveTree();
+        ApplyExternalToolAvailability();
     }
 
     private void RestoreWindowFromSettings()
@@ -246,6 +247,9 @@ public partial class MainWindow : Window
 
     private void RestoreTerminalFromSettings()
     {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.PowerShell))
+            return;
+
         if (!SettingsManager.Instance.Current.IsTerminalOpen)
             return;
 
@@ -307,7 +311,44 @@ public partial class MainWindow : Window
         _panes.Add(pane);
         UpdatePaneCloseButtonsVisibility();
         pane.Control.ApplyLocalization();
+        pane.Control.SetGitFeaturesAvailable(ExternalToolsService.IsAvailable(ExternalTool.Git));
+        pane.Control.SetAiFeaturesAvailable(IsAiFeatureAvailable());
         return pane;
+    }
+
+    private static bool IsAiFeatureAvailable() =>
+        AiProviderCatalog.IsConfigured(SettingsManager.Instance.Current);
+
+    private void ApplyExternalToolAvailability()
+    {
+        var gitAvailable = ExternalToolsService.IsAvailable(ExternalTool.Git);
+        var terminalAvailable = ExternalToolsService.IsAvailable(ExternalTool.PowerShell);
+        var aiAvailable = IsAiFeatureAvailable();
+
+        foreach (var pane in _panes)
+        {
+            pane.Control.SetGitFeaturesAvailable(gitAvailable);
+            pane.Control.SetAiFeaturesAvailable(aiAvailable);
+        }
+
+        TerminalToggleButton.Visibility = terminalAvailable
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (!terminalAvailable && _isTerminalVisible)
+            FinishHideTerminal(animate: false, waitForProcessStop: true);
+
+        if (!aiAvailable)
+        {
+            if (AiPromptOverlay.Visibility == Visibility.Visible)
+                HideAiPromptOverlay();
+            if (AiPreviewOverlay.Visibility == Visibility.Visible)
+            {
+                HideAiPreviewOverlay();
+                _aiPendingCommands = [];
+                _aiTargetPane = null;
+            }
+        }
     }
 
     private void AddPaneButton_Click(object sender, RoutedEventArgs e)
@@ -1081,6 +1122,12 @@ public partial class MainWindow : Window
         int refreshVersion,
         CancellationToken cancellationToken)
     {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+        {
+            pane.Control.UpdateGitStatus(false, string.Empty, 0);
+            return;
+        }
+
         if (string.IsNullOrEmpty(pane.CurrentPath))
         {
             pane.Control.UpdateGitStatus(false, string.Empty, 0);
@@ -1508,16 +1555,22 @@ public partial class MainWindow : Window
             isSingleFolderSelection ? Visibility.Visible : Visibility.Collapsed;
 
         var hasResolvedPath = TryGetGitContextDirectory(pane, out var resolvedDirectory);
-        var repositoryRoot = hasResolvedPath
+        var gitAvailable = ExternalToolsService.IsAvailable(ExternalTool.Git);
+        var repositoryRoot = gitAvailable && hasResolvedPath
             ? GitRepositoryHelper.GetGitRepositoryRoot(resolvedDirectory)
             : null;
         var isGitRepo = repositoryRoot is not null;
 
-        pane.Control.GitInitMenuItemControl.IsEnabled = hasResolvedPath && !isGitRepo;
-        pane.Control.GitCommitMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
-        pane.Control.GitAmendMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
-        pane.Control.GitHistoryMenuItemControl.IsEnabled = isGitRepo && !_isGitHistoryInProgress;
-        pane.Control.AiExecuteQueryMenuItemControl.IsEnabled = hasResolvedPath && !_isAiInProgress;
+        if (gitAvailable)
+        {
+            pane.Control.GitInitMenuItemControl.IsEnabled = hasResolvedPath && !isGitRepo;
+            pane.Control.GitCommitMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
+            pane.Control.GitAmendMenuItemControl.IsEnabled = isGitRepo && !_isGitCommitInProgress;
+            pane.Control.GitHistoryMenuItemControl.IsEnabled = isGitRepo && !_isGitHistoryInProgress;
+        }
+
+        if (IsAiFeatureAvailable())
+            pane.Control.AiExecuteQueryMenuItemControl.IsEnabled = hasResolvedPath && !_isAiInProgress;
 
         foreach (var item in menu.Items)
         {
@@ -1606,11 +1659,21 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private void HandleGitCommitRequest(DirectoryPaneState pane) =>
-        BeginGitCommitPromptWorkflow(pane, NamePromptMode.GitCommit, requireChanges: false);
+    private void HandleGitCommitRequest(DirectoryPaneState pane)
+    {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return;
 
-    private void HandleGitAmendRequest(DirectoryPaneState pane) =>
+        BeginGitCommitPromptWorkflow(pane, NamePromptMode.GitCommit, requireChanges: false);
+    }
+
+    private void HandleGitAmendRequest(DirectoryPaneState pane)
+    {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return;
+
         BeginGitCommitPromptWorkflow(pane, NamePromptMode.GitAmend, requireChanges: true);
+    }
 
     private void BeginGitCommitPromptWorkflow(
         DirectoryPaneState pane,
@@ -1692,6 +1755,9 @@ public partial class MainWindow : Window
 
     private async void HandleGitBranchRequest(DirectoryPaneState pane, string targetDirectory)
     {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return;
+
         var loc = LocalizationManager.Instance;
         if (string.IsNullOrWhiteSpace(targetDirectory)) return;
 
@@ -1736,6 +1802,9 @@ public partial class MainWindow : Window
 
     private void HandleGitHistoryRequest(DirectoryPaneState pane)
     {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return;
+
         if (!EnsureGitRepositoryOrNotify(pane, out var repositoryRoot))
             return;
 
@@ -1744,18 +1813,14 @@ public partial class MainWindow : Window
 
     private void HandleAiExecuteQueryRequest(DirectoryPaneState pane)
     {
+        if (!IsAiFeatureAvailable())
+            return;
+
         SetActivePane(pane);
 
         if (string.IsNullOrWhiteSpace(pane.CurrentPath) || !Directory.Exists(pane.CurrentPath))
         {
             StatusText.Text = LocalizationManager.Instance["UI_GitNoDirectory"];
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(SettingsManager.Instance.Current.OpenRouterApiKey))
-        {
-            StatusText.Text = LocalizationManager.Instance["UI_AiOpenRouterApiKey"];
-            ShowSettingsOverlay();
             return;
         }
 
@@ -3041,6 +3106,9 @@ public partial class MainWindow : Window
 
     private async void HandleGitInit(DirectoryPaneState pane, string targetDirectory)
     {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return;
+
         var loc = LocalizationManager.Instance;
 
         if (string.IsNullOrWhiteSpace(targetDirectory))
@@ -3757,7 +3825,10 @@ public partial class MainWindow : Window
         switch (propertyName)
         {
             case nameof(AppSettings.Theme):
-                ThemeManager.ApplyTheme(SettingsManager.Instance.Current.Theme);
+            case nameof(AppSettings.CustomThemePath):
+                ThemeManager.ApplyTheme(
+                    SettingsManager.Instance.Current.Theme,
+                    SettingsManager.Instance.Current.CustomThemePath);
                 foreach (var pane in _panes)
                 {
                     pane.Control.ResetThemeBrushes();
@@ -3780,6 +3851,13 @@ public partial class MainWindow : Window
             case nameof(AppSettings.CustomFontPath):
             case nameof(AppSettings.UiFontId):
                 ApplyCustomFont();
+                break;
+            case nameof(AppSettings.OpenRouterApiKey):
+            case nameof(AppSettings.AiProvider):
+            case nameof(AppSettings.LocalAiEndpoint):
+            case nameof(AppSettings.PreferredAiModel):
+                ApplyExternalToolAvailability();
+                UpdateAiSettingsPanelVisibility();
                 break;
         }
     }
@@ -3818,6 +3896,7 @@ public partial class MainWindow : Window
         SettingsButton.ToolTip = loc["UI_Settings"];
         SettingsGeneralTabButton.Content = loc["UI_SettingsTabGeneral"];
         SettingsCustomizationTabButton.Content = loc["UI_SettingsTabCustomization"];
+        SettingsSupportTabButton.Content = loc["UI_SettingsTabSupport"];
         SettingsUseBuiltInMediaViewerCheckBox.Content = loc["UI_UseBuiltInMediaViewer"];
         SettingsUseBuiltInMediaViewerHint.Text = loc["UI_UseBuiltInMediaViewerHint"];
         SettingsCustomFontLabel.Text = loc["UI_Font"];
@@ -3826,11 +3905,22 @@ public partial class MainWindow : Window
         SettingsClearFontButton.Content = loc["UI_ClearFont"];
         PopulateFontComboBox(loc);
         SettingsIconStyleLabel.Text = loc["UI_IconStyle"];
+        SettingsSyncIconPacksButton.Content = loc["UI_SyncIconPacks"];
+        SettingsBrowseThemeButton.Content = loc["UI_BrowseTheme"];
+        SettingsClearThemeButton.Content = loc["UI_ClearTheme"];
+        SettingsExportThemeButton.Content = loc["UI_ExportTheme"];
+        SettingsSyncThemesButton.Content = loc["UI_SyncThemes"];
+        SettingsCustomThemeHint.Text = loc["UI_CustomThemeHint"];
         SettingsCustomIconPackLabel.Text = loc["UI_CustomIconPack"];
         SettingsCustomIconPackHint.Text = loc["UI_CustomIconPackHint"];
         SettingsBrowseIconPackButton.Content = loc["UI_BrowseIconPack"];
         SettingsClearIconPackButton.Content = loc["UI_ClearIconPack"];
         SettingsEditIconPackButton.Content = loc["UI_EditIconPack"];
+        SettingsCustomizationProfileLabel.Text = loc["UI_CustomizationProfile"];
+        SettingsCustomizationProfileHint.Text = loc["UI_CustomizationProfileHint"];
+        SettingsExportProfileButton.Content = loc["UI_ExportCustomizationProfile"];
+        SettingsImportProfileButton.Content = loc["UI_ImportCustomizationProfile"];
+        SettingsClearCacheButton.Content = loc["UI_ClearCache"];
         if (IconPackEditorOverlay.Visibility == Visibility.Visible)
             ApplyIconPackEditorLocalizedStrings(loc);
         AddPaneButton.ToolTip = loc["UI_AddPane"];
@@ -3871,6 +3961,13 @@ public partial class MainWindow : Window
         if (EncryptFolderOverlay.Visibility == Visibility.Visible)
             PopulateEncryptFolderMethodCombo();
 
+        SettingsAiProviderLabel.Text = loc["UI_AiProvider"];
+        SettingsAiEndpointLabel.Text = loc["UI_AiEndpoint"];
+        SettingsAiApiKeyLabel.Text = loc["UI_AiOpenRouterApiKey"];
+        SettingsAiModelLabel.Text = loc["UI_AiPreferredModel"];
+        PopulateAiProviderComboBox(loc);
+        UpdateAiSettingsPanelVisibility();
+
         foreach (var pane in _panes)
             pane.Control.ApplyLocalization();
     }
@@ -3883,20 +3980,23 @@ public partial class MainWindow : Window
         try
         {
             var loc = LocalizationManager.Instance;
-            SettingsThemeComboBox.Items.Clear();
-            SettingsThemeComboBox.Items.Add(loc["UI_ThemeDark"]);
-            SettingsThemeComboBox.Items.Add(loc["UI_ThemeLight"]);
-            SettingsThemeComboBox.SelectedIndex =
-                SettingsManager.Instance.Current.Theme == AppTheme.Light ? 1 : 0;
 
             SettingsCustomFontPathBox.Text = SettingsManager.Instance.Current.CustomFontPath;
             SelectFontComboBoxItem(SettingsManager.Instance.Current.UiFontId);
             UpdateCustomFontPanelVisibility();
 
+            PopulateThemeComboBox(loc);
+            SettingsCustomThemePathBox.Text = SettingsManager.Instance.Current.CustomThemePath;
+            UpdateCustomThemePanelVisibility();
+            UpdateThemeDetailsText();
+
             PopulateIconStyleComboBox(loc);
-            SettingsIconStyleComboBox.SelectedIndex = IconStyleToIndex(SettingsManager.Instance.Current.FileIconStyle);
+            SelectIconPackComboBoxItem(
+                SettingsManager.Instance.Current.FileIconStyle,
+                SettingsManager.Instance.Current.CustomIconPackPath);
             SettingsCustomIconPackPathBox.Text = SettingsManager.Instance.Current.CustomIconPackPath;
             UpdateCustomIconPackPanelVisibility();
+            UpdateIconPackDetailsText();
 
             SettingsTimeFormatCheckBox.IsChecked =
                 SettingsManager.Instance.Current.TimeFormat == TimeFormatMode.Hour12;
@@ -3911,8 +4011,12 @@ public partial class MainWindow : Window
                     SettingsManager.Instance.Current.Language,
                     StringComparison.OrdinalIgnoreCase)) ?? locales.FirstOrDefault();
 
+            PopulateAiProviderComboBox(loc);
+            SelectAiProviderComboBoxItem(SettingsManager.Instance.Current.AiProvider);
+            SettingsAiEndpointBox.Text = SettingsManager.Instance.Current.LocalAiEndpoint;
             SettingsAiApiKeyBox.Text = SettingsManager.Instance.Current.OpenRouterApiKey;
             SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
+            UpdateAiSettingsPanelVisibility();
 
             SettingsScrollSensitivitySlider.Value = Math.Clamp(
                 SettingsManager.Instance.Current.ScrollSensitivity,
@@ -3936,27 +4040,105 @@ public partial class MainWindow : Window
     private void SettingsButton_Click(object sender, RoutedEventArgs e) =>
         ShowSettingsOverlay();
 
+    private enum SettingsTabKind
+    {
+        General,
+        Customization,
+        Support
+    }
+
     private void ShowSettingsOverlay()
     {
         PopulateSettingsControls();
-        SelectSettingsTab(isCustomization: false);
+        SelectSettingsTab(SettingsTabKind.General);
         SettingsOverlay.Visibility = Visibility.Visible;
         UiAnimationHelper.ShowOverlay(SettingsPanel);
     }
 
-    private void SelectSettingsTab(bool isCustomization)
+    private void SelectSettingsTab(SettingsTabKind tab)
     {
-        SettingsGeneralPanel.Visibility = isCustomization ? Visibility.Collapsed : Visibility.Visible;
-        SettingsCustomizationPanel.Visibility = isCustomization ? Visibility.Visible : Visibility.Collapsed;
-        SettingsGeneralTabButton.Tag = isCustomization ? null : "selected";
-        SettingsCustomizationTabButton.Tag = isCustomization ? "selected" : null;
+        SettingsGeneralPanel.Visibility = tab == SettingsTabKind.General
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        SettingsCustomizationPanel.Visibility = tab == SettingsTabKind.Customization
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        SettingsSupportPanel.Visibility = tab == SettingsTabKind.Support
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        SettingsGeneralTabButton.Tag = tab == SettingsTabKind.General ? "selected" : null;
+        SettingsCustomizationTabButton.Tag = tab == SettingsTabKind.Customization ? "selected" : null;
+        SettingsSupportTabButton.Tag = tab == SettingsTabKind.Support ? "selected" : null;
+
+        if (tab == SettingsTabKind.Support)
+            PopulateSupportPanel();
+    }
+
+    private void PopulateSupportPanel()
+    {
+        var loc = LocalizationManager.Instance;
+        var info = AuthorSupportService.GetInfo();
+
+        SettingsSupportIntroText.Text = loc["UI_SupportIntro"];
+        SettingsSupportTokenText.Text = loc["UI_SupportToken"];
+        SettingsSupportNetworkText.Text = loc["UI_SupportNetwork"];
+        SettingsSupportAddressLabel.Text = loc["UI_SupportWalletAddress"];
+        SettingsSupportWarningText.Text = loc["UI_SupportNetworkWarning"];
+        SettingsSupportThanksText.Text = loc["UI_SupportThanks"];
+        SettingsSupportCopyButton.Content = loc["UI_SupportCopyAddress"];
+        SettingsSupportOpenBscScanButton.Content = loc["UI_SupportOpenBscScan"];
+        SettingsSupportWalletAddressBox.Text = info.UsdtBep20Address.Trim();
+        SettingsSupportCopyButton.IsEnabled = true;
+        SettingsSupportOpenBscScanButton.IsEnabled = true;
     }
 
     private void SettingsGeneralTabButton_Click(object sender, RoutedEventArgs e) =>
-        SelectSettingsTab(isCustomization: false);
+        SelectSettingsTab(SettingsTabKind.General);
 
     private void SettingsCustomizationTabButton_Click(object sender, RoutedEventArgs e) =>
-        SelectSettingsTab(isCustomization: true);
+        SelectSettingsTab(SettingsTabKind.Customization);
+
+    private void SettingsSupportTabButton_Click(object sender, RoutedEventArgs e) =>
+        SelectSettingsTab(SettingsTabKind.Support);
+
+    private void SettingsSupportCopyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!AuthorSupportService.HasWalletAddress())
+            return;
+
+        var address = AuthorSupportService.GetInfo().UsdtBep20Address.Trim();
+        Clipboard.SetText(address);
+
+        var loc = LocalizationManager.Instance;
+        MessageBox.Show(
+            loc["UI_SupportCopySuccess"],
+            loc["UI_SettingsTabSupport"],
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void SettingsSupportOpenBscScanButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!AuthorSupportService.HasWalletAddress())
+            return;
+
+        var address = AuthorSupportService.GetInfo().UsdtBep20Address.Trim();
+        var url = AuthorSupportService.GetBscScanAddressUrl(address);
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                ex.Message,
+                LocalizationManager.Instance["UI_SupportOpenBscScan"],
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
 
     private void HideSettingsOverlay()
     {
@@ -4014,56 +4196,372 @@ public partial class MainWindow : Window
 
     private void SettingsThemeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressSettingsUiChange || SettingsThemeComboBox.SelectedIndex < 0)
+        if (_suppressSettingsUiChange || SettingsThemeComboBox.SelectedItem is not UiThemeComboItem item)
             return;
 
-        var theme = SettingsThemeComboBox.SelectedIndex == 1
-            ? AppTheme.Light
-            : AppTheme.Dark;
-        SettingsManager.Instance.UpdateTheme(theme);
+        var path = item.JsonPath ?? (item.RequiresManualPath
+            ? SettingsManager.Instance.Current.CustomThemePath
+            : string.Empty);
+
+        SettingsManager.Instance.ApplyThemeSelection(item.Theme, path);
+        SettingsCustomThemePathBox.Text = SettingsManager.Instance.Current.CustomThemePath;
+        UpdateCustomThemePanelVisibility();
+        UpdateThemeDetailsText();
+    }
+
+    private void PopulateThemeComboBox(LocalizationManager loc)
+    {
+        var settings = SettingsManager.Instance.Current;
+        SettingsThemeComboBox.Items.Clear();
+
+        foreach (var theme in ThemeCatalog.GetBuiltInThemes())
+        {
+            if (theme == AppTheme.Custom)
+                continue;
+
+            SettingsThemeComboBox.Items.Add(new UiThemeComboItem
+            {
+                Theme = theme,
+                Label = loc[ThemeCatalog.GetLabelKey(theme)]
+            });
+        }
+
+        foreach (var imported in BuiltInThemeCatalog.GetImportedThemeOptions())
+            SettingsThemeComboBox.Items.Add(imported);
+
+        SettingsThemeComboBox.Items.Add(new UiThemeComboItem
+        {
+            Theme = AppTheme.Custom,
+            RequiresManualPath = true,
+            Label = loc["UI_ThemeCustom"],
+            Description = loc["UI_CustomThemeHint"]
+        });
+
+        SettingsThemeComboBox.DisplayMemberPath = nameof(UiThemeComboItem.Label);
+        SelectThemeComboBoxItem(settings.Theme, settings.CustomThemePath);
+    }
+
+    private void SelectThemeComboBoxItem(AppTheme theme, string? customThemePath)
+    {
+        var normalizedPath = customThemePath?.Trim() ?? string.Empty;
+
+        for (var index = 0; index < SettingsThemeComboBox.Items.Count; index++)
+        {
+            if (SettingsThemeComboBox.Items[index] is not UiThemeComboItem item)
+                continue;
+
+            if (theme == AppTheme.Custom && !string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                if (!string.IsNullOrWhiteSpace(item.JsonPath) &&
+                    string.Equals(item.JsonPath, normalizedPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    SettingsThemeComboBox.SelectedIndex = index;
+                    return;
+                }
+
+                if (item.RequiresManualPath)
+                {
+                    SettingsThemeComboBox.SelectedIndex = index;
+                    return;
+                }
+
+                continue;
+            }
+
+            if (item.Theme == theme && string.IsNullOrWhiteSpace(item.JsonPath) && !item.RequiresManualPath)
+            {
+                SettingsThemeComboBox.SelectedIndex = index;
+                return;
+            }
+        }
+
+        if (SettingsThemeComboBox.Items.Count > 0)
+            SettingsThemeComboBox.SelectedIndex = 0;
+    }
+
+    private void UpdateCustomThemePanelVisibility()
+    {
+        var show = SettingsThemeComboBox.SelectedItem is UiThemeComboItem item &&
+                   item.Theme == AppTheme.Custom;
+        SettingsCustomThemePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateThemeDetailsText()
+    {
+        if (SettingsThemeComboBox.SelectedItem is UiThemeComboItem item &&
+            !string.IsNullOrWhiteSpace(item.Description))
+        {
+            SettingsThemeDetailsText.Text = item.Description;
+            SettingsThemeDetailsText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        if (SettingsThemeComboBox.SelectedItem is UiThemeComboItem customItem &&
+            customItem.Theme == AppTheme.Custom &&
+            !string.IsNullOrWhiteSpace(SettingsCustomThemePathBox.Text))
+        {
+            var manifest = CustomThemeLoader.ReadManifest(SettingsCustomThemePathBox.Text);
+            SettingsThemeDetailsText.Text = BuiltInThemeCatalog.BuildDescription(manifest);
+            SettingsThemeDetailsText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        SettingsThemeDetailsText.Text = string.Empty;
+        SettingsThemeDetailsText.Visibility = Visibility.Collapsed;
+    }
+
+    private void SettingsBrowseThemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = LocalizationManager.Instance["UI_BrowseTheme"],
+            Filter = "Theme JSON|*.json|All files|*.*",
+            CheckFileExists = true
+        };
+
+        var currentPath = SettingsManager.Instance.Current.CustomThemePath;
+        if (!string.IsNullOrWhiteSpace(currentPath))
+        {
+            var directory = Path.GetDirectoryName(currentPath);
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+                dialog.InitialDirectory = directory;
+        }
+        else if (Directory.Exists(PackSyncService.UserThemesRoot))
+        {
+            dialog.InitialDirectory = PackSyncService.UserThemesRoot;
+        }
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        ApplyCustomThemeFile(dialog.FileName);
+    }
+
+    private void SettingsClearThemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsCustomThemePathBox.Text = string.Empty;
+        SettingsManager.Instance.ApplyThemeSelection(AppTheme.Dark, string.Empty);
+        _suppressSettingsUiChange = true;
+        try
+        {
+            SelectThemeComboBoxItem(AppTheme.Dark, string.Empty);
+            UpdateCustomThemePanelVisibility();
+            UpdateThemeDetailsText();
+        }
+        finally
+        {
+            _suppressSettingsUiChange = false;
+        }
+    }
+
+    private void SettingsExportThemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var loc = LocalizationManager.Instance;
+        Directory.CreateDirectory(PackSyncService.UserThemesRoot);
+        var defaultName = $"my-theme-{DateTime.Now:yyyyMMdd-HHmm}.json";
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = loc["UI_ExportTheme"],
+            Filter = "Theme JSON|*.json",
+            FileName = defaultName,
+            InitialDirectory = PackSyncService.UserThemesRoot
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            CustomThemeLoader.ExportCurrent(dialog.FileName, loc["UI_ThemeCustomExportName"]);
+            ApplyCustomThemeFile(dialog.FileName);
+            PopulateThemeComboBox(loc);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, loc["UI_ExportTheme"], MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void SettingsSyncThemesButton_Click(object sender, RoutedEventArgs e)
+    {
+        var result = PackSyncService.SyncBuiltInThemes();
+        var loc = LocalizationManager.Instance;
+        MessageBox.Show(
+            FormatSyncResult(loc["UI_SyncThemes"], result),
+            loc["UI_SyncThemes"],
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+        PopulateThemeComboBox(loc);
+    }
+
+    private void ApplyCustomThemeFile(string filePath)
+    {
+        SettingsCustomThemePathBox.Text = filePath;
+        SettingsManager.Instance.ApplyThemeSelection(AppTheme.Custom, filePath);
+        _suppressSettingsUiChange = true;
+        try
+        {
+            SelectThemeComboBoxItem(AppTheme.Custom, filePath);
+            UpdateCustomThemePanelVisibility();
+            UpdateThemeDetailsText();
+        }
+        finally
+        {
+            _suppressSettingsUiChange = false;
+        }
     }
 
     private void PopulateIconStyleComboBox(LocalizationManager loc)
     {
         SettingsIconStyleComboBox.Items.Clear();
-        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleWindows"]);
-        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleFlat"]);
-        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleMinimal"]);
-        SettingsIconStyleComboBox.Items.Add(loc["UI_IconStyleCustom"]);
+
+        foreach (var option in BuiltInIconPackCatalog.GetStyleOptions(loc))
+            SettingsIconStyleComboBox.Items.Add(option);
+
+        foreach (var pack in BuiltInIconPackCatalog.GetBuiltInPackOptions())
+            SettingsIconStyleComboBox.Items.Add(pack);
+
+        SettingsIconStyleComboBox.Items.Add(new UiIconPackOption
+        {
+            Style = FileIconStyle.Custom,
+            RequiresManualPath = true,
+            Label = loc["UI_IconStyleCustom"],
+            Description = loc["UI_IconStyleCustomHint"]
+        });
+
+        SettingsIconStyleComboBox.DisplayMemberPath = nameof(UiIconPackOption.Label);
     }
 
-    private static int IconStyleToIndex(FileIconStyle style) =>
-        style switch
-        {
-            FileIconStyle.Flat => 1,
-            FileIconStyle.Minimal => 2,
-            FileIconStyle.Custom => 3,
-            _ => 0
-        };
+    private void SelectIconPackComboBoxItem(FileIconStyle style, string? packPath)
+    {
+        var normalizedPath = packPath?.Trim() ?? string.Empty;
 
-    private static FileIconStyle IndexToIconStyle(int index) =>
-        index switch
+        for (var index = 0; index < SettingsIconStyleComboBox.Items.Count; index++)
         {
-            1 => FileIconStyle.Flat,
-            2 => FileIconStyle.Minimal,
-            3 => FileIconStyle.Custom,
-            _ => FileIconStyle.Windows
-        };
+            if (SettingsIconStyleComboBox.Items[index] is not UiIconPackOption item)
+                continue;
+
+            if (style == FileIconStyle.Custom && !string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                if (!string.IsNullOrWhiteSpace(item.PackFolderPath) &&
+                    string.Equals(item.PackFolderPath, normalizedPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    SettingsIconStyleComboBox.SelectedIndex = index;
+                    return;
+                }
+
+                if (item.RequiresManualPath)
+                {
+                    SettingsIconStyleComboBox.SelectedIndex = index;
+                    return;
+                }
+
+                continue;
+            }
+
+            if (item.Style == style && string.IsNullOrWhiteSpace(item.PackFolderPath) && !item.RequiresManualPath)
+            {
+                SettingsIconStyleComboBox.SelectedIndex = index;
+                return;
+            }
+        }
+
+        if (SettingsIconStyleComboBox.Items.Count > 0)
+            SettingsIconStyleComboBox.SelectedIndex = 0;
+    }
 
     private void SettingsIconStyleComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppressSettingsUiChange || SettingsIconStyleComboBox.SelectedIndex < 0)
+        if (_suppressSettingsUiChange || SettingsIconStyleComboBox.SelectedItem is not UiIconPackOption item)
             return;
 
-        var style = IndexToIconStyle(SettingsIconStyleComboBox.SelectedIndex);
+        if (item.RequiresManualPath)
+        {
+            UpdateCustomIconPackPanelVisibility();
+            UpdateIconPackDetailsText();
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.PackFolderPath))
+        {
+            SettingsCustomIconPackPathBox.Text = item.PackFolderPath;
+            SettingsManager.Instance.UpdateCustomIconPackPath(item.PackFolderPath);
+            SettingsManager.Instance.UpdateFileIconStyle(FileIconStyle.Custom);
+        }
+        else
+        {
+            SettingsCustomIconPackPathBox.Text = string.Empty;
+            SettingsManager.Instance.UpdateCustomIconPackPath(string.Empty);
+            SettingsManager.Instance.UpdateFileIconStyle(item.Style);
+        }
+
         UpdateCustomIconPackPanelVisibility();
-        SettingsManager.Instance.UpdateFileIconStyle(style);
+        UpdateIconPackDetailsText();
     }
 
     private void UpdateCustomIconPackPanelVisibility()
     {
-        var isCustom = SettingsIconStyleComboBox.SelectedIndex == IconStyleToIndex(FileIconStyle.Custom);
-        SettingsCustomIconPackPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+        var show = SettingsIconStyleComboBox.SelectedItem is UiIconPackOption item &&
+                   item.Style == FileIconStyle.Custom &&
+                   item.RequiresManualPath;
+        SettingsCustomIconPackPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateIconPackDetailsText()
+    {
+        if (SettingsIconStyleComboBox.SelectedItem is UiIconPackOption item &&
+            !string.IsNullOrWhiteSpace(item.Description))
+        {
+            SettingsIconPackDetailsText.Text = item.Description;
+            SettingsIconPackDetailsText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var path = SettingsManager.Instance.Current.CustomIconPackPath;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            var info = BuiltInIconPackCatalog.InspectFolder(path);
+            if (info is not null)
+            {
+                SettingsIconPackDetailsText.Text = BuiltInIconPackCatalog.BuildPackDescription(info);
+                SettingsIconPackDetailsText.Visibility = Visibility.Visible;
+                return;
+            }
+        }
+
+        SettingsIconPackDetailsText.Text = string.Empty;
+        SettingsIconPackDetailsText.Visibility = Visibility.Collapsed;
+    }
+
+    private void SettingsSyncIconPacksButton_Click(object sender, RoutedEventArgs e)
+    {
+        var result = PackSyncService.SyncBuiltInIconPacks();
+        var loc = LocalizationManager.Instance;
+        MessageBox.Show(
+            FormatSyncResult(loc["UI_SyncIconPacks"], result),
+            loc["UI_SyncIconPacks"],
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+
+        var settings = SettingsManager.Instance.Current;
+        PopulateIconStyleComboBox(loc);
+        SelectIconPackComboBoxItem(settings.FileIconStyle, settings.CustomIconPackPath);
+        UpdateIconPackDetailsText();
+    }
+
+    private static string FormatSyncResult(string title, PackSyncResult result)
+    {
+        var lines = new List<string>
+        {
+            $"{title}",
+            $"Updated: {result.Updated}",
+            $"Skipped: {result.Skipped}"
+        };
+
+        if (result.Messages.Count > 0)
+            lines.AddRange(result.Messages.Select(message => $"• {message}"));
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private void SettingsBrowseIconPackButton_Click(object sender, RoutedEventArgs e)
@@ -4081,23 +4579,28 @@ public partial class MainWindow : Window
             return;
 
         SettingsCustomIconPackPathBox.Text = dialog.FolderName;
-        if (SettingsIconStyleComboBox.SelectedIndex != IconStyleToIndex(FileIconStyle.Custom))
+        _suppressSettingsUiChange = true;
+        try
         {
-            _suppressSettingsUiChange = true;
-            SettingsIconStyleComboBox.SelectedIndex = IconStyleToIndex(FileIconStyle.Custom);
+            SelectIconPackComboBoxItem(FileIconStyle.Custom, dialog.FolderName);
             UpdateCustomIconPackPanelVisibility();
+        }
+        finally
+        {
             _suppressSettingsUiChange = false;
         }
 
         SettingsManager.Instance.UpdateCustomIconPackPath(dialog.FolderName);
         if (SettingsManager.Instance.Current.FileIconStyle != FileIconStyle.Custom)
             SettingsManager.Instance.UpdateFileIconStyle(FileIconStyle.Custom);
+        UpdateIconPackDetailsText();
     }
 
     private void SettingsClearIconPackButton_Click(object sender, RoutedEventArgs e)
     {
         SettingsCustomIconPackPathBox.Text = string.Empty;
         SettingsManager.Instance.UpdateCustomIconPackPath(string.Empty);
+        UpdateIconPackDetailsText();
     }
 
     private void SettingsBrowseFontButton_Click(object sender, RoutedEventArgs e)
@@ -4304,6 +4807,98 @@ public partial class MainWindow : Window
             : $"{percent:0.#}%";
     }
 
+    private void PopulateAiProviderComboBox(LocalizationManager loc)
+    {
+        var currentProvider = SettingsManager.Instance.Current.AiProvider;
+        SettingsAiProviderComboBox.Items.Clear();
+
+        foreach (AiProvider provider in Enum.GetValues<AiProvider>())
+        {
+            SettingsAiProviderComboBox.Items.Add(new UiAiProviderOption
+            {
+                Provider = provider,
+                Label = loc[AiProviderCatalog.GetLabelKey(provider)]
+            });
+        }
+
+        SelectAiProviderComboBoxItem(currentProvider);
+    }
+
+    private void SelectAiProviderComboBoxItem(AiProvider provider)
+    {
+        provider = AiProviderCatalog.Normalize(provider);
+
+        for (var index = 0; index < SettingsAiProviderComboBox.Items.Count; index++)
+        {
+            if (SettingsAiProviderComboBox.Items[index] is UiAiProviderOption item &&
+                item.Provider == provider)
+            {
+                SettingsAiProviderComboBox.SelectedIndex = index;
+                return;
+            }
+        }
+
+        if (SettingsAiProviderComboBox.Items.Count > 0)
+            SettingsAiProviderComboBox.SelectedIndex = 0;
+    }
+
+    private void UpdateAiSettingsPanelVisibility()
+    {
+        var settings = AiProviderCatalog.NormalizeSettings(SettingsManager.Instance.Current);
+        var loc = LocalizationManager.Instance;
+        var isOpenRouter = settings.AiProvider == AiProvider.OpenRouter;
+        var isLocal = settings.AiProvider is AiProvider.Ollama or AiProvider.LmStudio;
+
+        SettingsAiApiKeyPanel.Visibility = isOpenRouter ? Visibility.Visible : Visibility.Collapsed;
+        SettingsAiEndpointPanel.Visibility = isLocal ? Visibility.Visible : Visibility.Collapsed;
+
+        SettingsAiApiKeyHint.Text = loc["UI_AiApiKeyHint"];
+        SettingsAiModelHint.Text = loc[AiProviderCatalog.GetModelHintKey(settings.AiProvider)];
+
+        if (isLocal)
+        {
+            SettingsAiEndpointHint.Text = string.Format(
+                loc["UI_AiEndpointDefaultHint"],
+                AiProviderCatalog.GetDefaultEndpoint(settings.AiProvider));
+            SettingsAiEndpointHint.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            SettingsAiEndpointHint.Text = string.Empty;
+            SettingsAiEndpointHint.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void SettingsAiProviderComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSettingsUiChange || SettingsAiProviderComboBox.SelectedItem is not UiAiProviderOption item)
+            return;
+
+        SettingsManager.Instance.UpdateAiProvider(item.Provider);
+
+        _suppressSettingsUiChange = true;
+        try
+        {
+            SettingsAiEndpointBox.Text = SettingsManager.Instance.Current.LocalAiEndpoint;
+            SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
+            UpdateAiSettingsPanelVisibility();
+        }
+        finally
+        {
+            _suppressSettingsUiChange = false;
+        }
+    }
+
+    private void SettingsAiEndpointBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        SettingsManager.Instance.UpdateLocalAiEndpoint(SettingsAiEndpointBox.Text);
+        SettingsAiEndpointBox.Text = SettingsManager.Instance.Current.LocalAiEndpoint;
+        UpdateAiSettingsPanelVisibility();
+    }
+
     private void SettingsAiApiKeyBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_suppressAiApiKeyChange)
@@ -4317,12 +4912,14 @@ public partial class MainWindow : Window
         if (_suppressSettingsUiChange)
             return;
 
+        var settings = SettingsManager.Instance.Current;
         var model = SettingsAiModelTextBox.Text.Trim();
         if (string.IsNullOrEmpty(model))
-            model = "openai/gpt-4o-mini";
+            model = AiProviderCatalog.GetDefaultModel(settings.AiProvider);
 
         SettingsManager.Instance.UpdatePreferredAiModel(model);
         SettingsAiModelTextBox.Text = SettingsManager.Instance.Current.PreferredAiModel;
+        UpdateAiSettingsPanelVisibility();
     }
 
     private void TerminalToggleButton_Click(object sender, RoutedEventArgs e) =>
@@ -4330,6 +4927,9 @@ public partial class MainWindow : Window
 
     private void ToggleTerminalPanel()
     {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.PowerShell))
+            return;
+
         if (_terminalAnimationInProgress)
             return;
 

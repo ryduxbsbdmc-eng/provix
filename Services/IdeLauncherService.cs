@@ -17,6 +17,12 @@ public static class IdeLauncherService
     {
         errorMessage = string.Empty;
 
+        if (!ExternalToolsService.IsIdeAvailable(ide))
+        {
+            errorMessage = GetDefaultNotFoundMessage(ide);
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(itemPath))
         {
             errorMessage = "Item path is invalid.";

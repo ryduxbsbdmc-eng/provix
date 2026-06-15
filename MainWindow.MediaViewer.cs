@@ -105,7 +105,8 @@ public partial class MainWindow
         MediaViewerImageHost.Visibility = Visibility.Collapsed;
         MediaViewerVideoHost.Visibility = Visibility.Visible;
 
-        if (WebViewVideoPlayer.UsesWebViewPlayback(filePath))
+        if (WebViewVideoPlayer.UsesWebViewPlayback(filePath) &&
+            ExternalToolsService.IsAvailable(ExternalTool.WebView2))
             await ShowWebViewVideoAsync(filePath);
         else
             ShowMediaElementVideo(filePath);

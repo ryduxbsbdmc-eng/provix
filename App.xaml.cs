@@ -12,7 +12,12 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
 
         SettingsManager.Instance.Load();
-        ThemeManager.ApplyTheme(SettingsManager.Instance.Current.Theme);
+        AppCacheService.EnsureDirectories();
+        ExternalToolsService.Initialize();
+        PackSyncService.SyncBuiltInIconPacks();
+        PackSyncService.SyncBuiltInThemes();
+        var settings = SettingsManager.Instance.Current;
+        ThemeManager.ApplyTheme(settings.Theme, settings.CustomThemePath);
         LocalizationManager.Instance.LoadLanguage(SettingsManager.Instance.Current.Language);
 
         SessionEnding += App_SessionEnding;

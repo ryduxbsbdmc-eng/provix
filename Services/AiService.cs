@@ -11,8 +11,7 @@ namespace FileExplorer.Services;
 
 public sealed class AiService
 {
-    private const string OpenRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions";
-    private const int RequestTimeoutSeconds = 90;
+    private const int RequestTimeoutSeconds = 120;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -42,39 +41,53 @@ public sealed class AiService
         string userQuery,
         CancellationToken cancellationToken = default)
     {
-        var settings = SettingsManager.Instance.Current;
-        var apiKey = settings.OpenRouterApiKey?.Trim() ?? string.Empty;
+        var settings = AiProviderCatalog.NormalizeSettings(SettingsManager.Instance.Current);
+        var loc = LocalizationManager.Instance;
 
-        if (string.IsNullOrEmpty(apiKey))
-            return AiGenerationResult.Fail("OpenRouter API key is not configured. Add it in Settings.");
+        if (!AiProviderCatalog.IsConfigured(settings))
+            return AiGenerationResult.Fail(AiProviderCatalog.GetNotConfiguredMessage(settings.AiProvider, loc));
 
         if (string.IsNullOrWhiteSpace(userQuery))
             return AiGenerationResult.Fail("Please enter a request.");
 
-        var model = string.IsNullOrWhiteSpace(settings.PreferredAiModel)
-            ? "openai/gpt-4o-mini"
-            : settings.PreferredAiModel.Trim();
+        var endpoint = AiProviderCatalog.ResolveEndpoint(settings);
+        var model = AiProviderCatalog.ResolveModel(settings);
+        var provider = settings.AiProvider;
 
+        var gitContext = await BuildGitContextAsync(directoryPath, cancellationToken).ConfigureAwait(false);
         var fileContext = BuildFileContext(directoryPath, entries);
+        var changedFileContext = await BuildChangedFilePreviewsAsync(directoryPath, cancellationToken)
+            .ConfigureAwait(false);
         var systemPrompt = BuildSystemPrompt(directoryPath);
-        var userMessage = $"Current directory: {directoryPath}\n\nFiles:\n{fileContext}\n\nUser request: {userQuery.Trim()}";
+        var userMessage =
+            $"Current directory: {directoryPath}\n\n" +
+            $"{gitContext}\n\n" +
+            $"Files in current directory:\n{fileContext}\n\n" +
+            (string.IsNullOrEmpty(changedFileContext)
+                ? string.Empty
+                : $"Changed file previews (repo-wide):\n{changedFileContext}\n\n") +
+            $"User request: {userQuery.Trim()}";
 
         try
         {
-            var requestBody = new OpenRouterChatRequest
+            var requestBody = new ChatCompletionRequest
             {
                 Model = model,
                 Messages =
                 [
-                    new OpenRouterMessage { Role = "system", Content = systemPrompt },
-                    new OpenRouterMessage { Role = "user", Content = userMessage }
+                    new ChatMessage { Role = "system", Content = systemPrompt },
+                    new ChatMessage { Role = "user", Content = userMessage }
                 ]
             };
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, OpenRouterEndpoint);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            request.Headers.TryAddWithoutValidation("HTTP-Referer", "https://github.com/fileexplorer");
-            request.Headers.TryAddWithoutValidation("X-Title", "provix");
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+            ApplyAuthorization(request, settings);
+
+            if (provider == AiProvider.OpenRouter)
+            {
+                request.Headers.TryAddWithoutValidation("HTTP-Referer", "https://github.com/fileexplorer");
+                request.Headers.TryAddWithoutValidation("X-Title", "provix");
+            }
 
             var json = JsonSerializer.Serialize(requestBody, JsonOptions);
             request.Content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -85,10 +98,11 @@ public sealed class AiService
             if (!response.IsSuccessStatusCode)
             {
                 var detail = TryExtractApiError(responseBody) ?? response.ReasonPhrase ?? "Unknown error";
-                return AiGenerationResult.Fail($"OpenRouter API error ({(int)response.StatusCode}): {detail}");
+                var prefix = AiProviderCatalog.GetRequestErrorPrefix(provider);
+                return AiGenerationResult.Fail($"{prefix} error ({(int)response.StatusCode}): {detail}");
             }
 
-            var chatResponse = JsonSerializer.Deserialize<OpenRouterChatResponse>(responseBody, JsonOptions);
+            var chatResponse = JsonSerializer.Deserialize<ChatCompletionResponse>(responseBody, JsonOptions);
             var content = chatResponse?.Choices?.FirstOrDefault()?.Message?.Content?.Trim();
 
             if (string.IsNullOrEmpty(content))
@@ -96,7 +110,7 @@ public sealed class AiService
 
             var commands = ParseCommandsFromContent(content);
             if (commands.Count == 0)
-                return AiGenerationResult.Fail("The AI did not return any file operations.");
+                return AiGenerationResult.Fail("The AI did not return any operations.");
 
             return AiGenerationResult.Ok(commands);
         }
@@ -106,7 +120,10 @@ public sealed class AiService
         }
         catch (HttpRequestException ex)
         {
-            return AiGenerationResult.Fail($"Network error: {ex.Message}");
+            var hint = provider is AiProvider.Ollama or AiProvider.LmStudio
+                ? $" {AiProviderCatalog.GetConnectionHint(provider, loc)}"
+                : string.Empty;
+            return AiGenerationResult.Fail($"Network error: {ex.Message}.{hint}");
         }
         catch (JsonException ex)
         {
@@ -118,19 +135,140 @@ public sealed class AiService
         }
     }
 
+    private static void ApplyAuthorization(HttpRequestMessage request, AppSettings settings)
+    {
+        if (settings.AiProvider != AiProvider.OpenRouter)
+            return;
+
+        var apiKey = settings.OpenRouterApiKey.Trim();
+        if (!string.IsNullOrEmpty(apiKey))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+    }
+
     private static string BuildSystemPrompt(string directoryPath)
     {
-        return "You are a file management assistant. Given a list of files in a directory, generate a JSON array of operations to satisfy the user's request.\n" +
-            $"All paths must be relative to the current directory: {directoryPath}\n" +
-            "Use forward slashes in paths (e.g. \"images/photo.png\").\n" +
-            "Only operate on files listed in the context. Do not invent files that are not present.\n" +
+        var gitAvailable = ExternalToolsService.IsAvailable(ExternalTool.Git);
+        var gitOperations = gitAvailable
+            ? "- GIT_COMMIT: stage all changes in the repository (git add .) and commit. Fields: \"op\": \"GIT_COMMIT\", \"message\": \"commit message\"\n" +
+              "Rules for GIT_COMMIT:\n" +
+              "- Only use when the folder is inside a git repository (see Git context).\n" +
+              "- Put GIT_COMMIT last, after any file changes (WRITE, MOVE, RENAME, DELETE, MKDIR).\n" +
+              "- Write a clear, concise commit message in the user's language when possible.\n" +
+              "- If the working tree is already clean and no file changes are needed, you may still return GIT_COMMIT only when the user explicitly asks to commit; otherwise return [].\n"
+            : string.Empty;
+
+        var example = gitAvailable
+            ? "Example: [{\"op\": \"WRITE\", \"path\": \"notes.txt\", \"content\": \"Hello\"}, {\"op\": \"GIT_COMMIT\", \"message\": \"Add notes file\"}]\n"
+            : "Example: [{\"op\": \"WRITE\", \"path\": \"notes.txt\", \"content\": \"Hello\"}]\n";
+
+        return "You are a file and git assistant for a Windows file manager. Given directory context and optional git status, generate a JSON array of operations to satisfy the user's request.\n" +
+            $"All file paths must be relative to the current directory: {directoryPath}\n" +
+            "Use forward slashes in paths (e.g. \"src/App.cs\").\n" +
+            "Prefer operating on files listed in the context. For WRITE you may create new files under the current directory.\n" +
             "Supported operations:\n" +
             "- MKDIR: create a folder. Fields: \"op\": \"MKDIR\", \"path\": \"folder_name\"\n" +
-            "- MOVE: move a file or folder. Fields: \"op\": \"MOVE\", \"src\": \"source_name\", \"dest\": \"destination/path\"\n" +
-            "- RENAME: rename a file or folder in place. Fields: \"op\": \"RENAME\", \"src\": \"old_name\", \"dest\": \"new_name\"\n" +
+            "- MOVE: move a file or folder. Fields: \"op\": \"MOVE\", \"src\": \"source\", \"dest\": \"destination/path\"\n" +
+            "- RENAME: rename in place. Fields: \"op\": \"RENAME\", \"src\": \"old_name\", \"dest\": \"new_name\"\n" +
+            "- WRITE: create or overwrite a text file. Fields: \"op\": \"WRITE\", \"path\": \"file.txt\", \"content\": \"file body\"\n" +
+            "- DELETE: delete a file or empty folder. Fields: \"op\": \"DELETE\", \"path\": \"file.txt\"\n" +
+            gitOperations +
             "Return ONLY a valid JSON array with no markdown, no explanation, no code fences.\n" +
-            "Example: [{\"op\": \"MKDIR\", \"path\": \"A\"}, {\"op\": \"MOVE\", \"src\": \"apple.txt\", \"dest\": \"A/apple.txt\"}]\n" +
+            example +
             "If no operations are needed, return an empty array: []";
+    }
+
+    private static async Task<string> BuildGitContextAsync(string directoryPath, CancellationToken cancellationToken)
+    {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return "Git: not available on this system.";
+
+        var repositoryRoot = GitRepositoryHelper.GetGitRepositoryRoot(directoryPath);
+        if (repositoryRoot is null)
+            return "Git: not a repository (git commit unavailable).";
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var status = await GitService.GetWorkingTreeStatusAsync(repositoryRoot).ConfigureAwait(false);
+        if (!status.Success)
+            return $"Git: unable to read status ({status.Message}).";
+
+        var lines = new List<string>
+        {
+            $"Git repository root: {repositoryRoot}",
+            $"Branch: {(string.IsNullOrWhiteSpace(status.BranchName) ? "(detached or unknown)" : status.BranchName)}",
+            $"Changed files: {status.ChangedFileCount}"
+        };
+
+        if (status.IsClean)
+        {
+            lines.Add("Working tree: clean.");
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        lines.Add("Working tree changes:");
+        foreach (var change in status.Changes)
+            lines.Add($"- [{change.Status}] {change.FilePath}");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private const int MaxPreviewFiles = 8;
+    private const int MaxPreviewCharsPerFile = 3000;
+
+    private static async Task<string> BuildChangedFilePreviewsAsync(
+        string directoryPath,
+        CancellationToken cancellationToken)
+    {
+        if (!ExternalToolsService.IsAvailable(ExternalTool.Git))
+            return string.Empty;
+
+        var repositoryRoot = GitRepositoryHelper.GetGitRepositoryRoot(directoryPath);
+        if (repositoryRoot is null)
+            return string.Empty;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var status = await GitService.GetWorkingTreeStatusAsync(repositoryRoot).ConfigureAwait(false);
+        if (!status.Success || status.Changes.Count == 0)
+            return string.Empty;
+
+        var previews = new List<string>();
+        var repoRootNormalized = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        foreach (var change in status.Changes)
+        {
+            if (previews.Count >= MaxPreviewFiles)
+                break;
+
+            if (change.Status is GitFileStatusType.Deleted or GitFileStatusType.Ignored or GitFileStatusType.Unchanged)
+                continue;
+
+            var absolutePath = Path.GetFullPath(Path.Combine(repoRootNormalized, change.FilePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (!File.Exists(absolutePath) || !TextFileHelper.IsEditableTextFile(absolutePath))
+                continue;
+
+            try
+            {
+                var info = new FileInfo(absolutePath);
+                if (info.Length > TextFileHelper.MaxInAppEditorBytes)
+                    continue;
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var text = await File.ReadAllTextAsync(absolutePath, cancellationToken).ConfigureAwait(false);
+                if (text.Length > MaxPreviewCharsPerFile)
+                    text = text[..MaxPreviewCharsPerFile] + "\n…(truncated)";
+
+                previews.Add($"--- {change.FilePath} [{change.Status}] ---\n{text}");
+            }
+            catch
+            {
+                // Skip unreadable files.
+            }
+        }
+
+        return previews.Count == 0 ? string.Empty : string.Join(Environment.NewLine + Environment.NewLine, previews);
     }
 
     private static string BuildFileContext(string directoryPath, IReadOnlyList<FileSystemEntry> entries)
@@ -197,8 +335,14 @@ public sealed class AiService
             using var doc = JsonDocument.Parse(responseBody);
             if (doc.RootElement.TryGetProperty("error", out var error))
             {
-                if (error.TryGetProperty("message", out var message))
+                if (error.ValueKind == JsonValueKind.Object &&
+                    error.TryGetProperty("message", out var message))
+                {
                     return message.GetString();
+                }
+
+                if (error.ValueKind == JsonValueKind.String)
+                    return error.GetString();
 
                 return error.ToString();
             }
@@ -211,16 +355,16 @@ public sealed class AiService
         return responseBody.Length > 200 ? responseBody[..200] + "…" : responseBody;
     }
 
-    private sealed class OpenRouterChatRequest
+    private sealed class ChatCompletionRequest
     {
         [JsonPropertyName("model")]
         public string Model { get; set; } = string.Empty;
 
         [JsonPropertyName("messages")]
-        public List<OpenRouterMessage> Messages { get; set; } = [];
+        public List<ChatMessage> Messages { get; set; } = [];
     }
 
-    private sealed class OpenRouterMessage
+    private sealed class ChatMessage
     {
         [JsonPropertyName("role")]
         public string Role { get; set; } = string.Empty;
@@ -229,15 +373,15 @@ public sealed class AiService
         public string Content { get; set; } = string.Empty;
     }
 
-    private sealed class OpenRouterChatResponse
+    private sealed class ChatCompletionResponse
     {
         [JsonPropertyName("choices")]
-        public List<OpenRouterChoice>? Choices { get; set; }
+        public List<ChatChoice>? Choices { get; set; }
     }
 
-    private sealed class OpenRouterChoice
+    private sealed class ChatChoice
     {
         [JsonPropertyName("message")]
-        public OpenRouterMessage? Message { get; set; }
+        public ChatMessage? Message { get; set; }
     }
 }

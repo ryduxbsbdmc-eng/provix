@@ -6,6 +6,8 @@ public sealed class AiCommand
     public string? Path { get; set; }
     public string? Src { get; set; }
     public string? Dest { get; set; }
+    public string? Message { get; set; }
+    public string? Content { get; set; }
 
     public string GetDisplayDescription()
     {
@@ -16,8 +18,20 @@ public sealed class AiCommand
             "MKDIR" => $"Create folder: {Path}",
             "MOVE" => $"Move: {Src} → {Dest}",
             "RENAME" => $"Rename: {Src} → {Dest}",
-            _ => $"{Op}: {Path ?? Src ?? Dest ?? "(unknown)"}"
+            "WRITE" => $"Write file: {Path}",
+            "DELETE" => $"Delete: {Path}",
+            "GIT_COMMIT" => $"Git commit: {Truncate(Message, 80)}",
+            _ => $"{Op}: {Path ?? Src ?? Dest ?? Message ?? "(unknown)"}"
         };
+    }
+
+    private static string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "(no message)";
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength] + "…";
     }
 }
 
