@@ -30,10 +30,15 @@ public sealed class FileIconService
     public ImageSource GetFileIcon(string filePath)
     {
         var extension = Path.GetExtension(filePath);
-        if (string.IsNullOrEmpty(extension))
-            return _defaultFileIcon ??= CreateFileIcon(filePath);
+        return GetFileIconByExtension(extension, filePath);
+    }
 
-        return _cache.GetOrAdd($"ext:{extension.ToLowerInvariant()}", _ => CreateFileIcon(filePath));
+    public ImageSource GetFileIconByExtension(string extension, string? samplePath = null)
+    {
+        if (string.IsNullOrEmpty(extension))
+            return _defaultFileIcon ??= CreateFileIcon(samplePath ?? string.Empty);
+
+        return _cache.GetOrAdd($"ext:{extension.ToLowerInvariant()}", _ => CreateFileIcon(samplePath ?? $"dummy{extension}"));
     }
 
     public ImageSource GetDriveIcon(string driveRoot) =>
