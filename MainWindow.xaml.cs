@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private readonly FileIconService _iconService = new();
     private readonly FileSystemService _fileSystemService;
     private readonly NavigationHistoryService _navigationHistory;
+    private readonly BookmarkService _bookmarkService;
     private readonly RecycleBinService _recycleBinService = new();
     private readonly ArchiveService _archiveService = new();
     private readonly EncryptedZipService _encryptedZipService = new();
@@ -90,8 +91,10 @@ public partial class MainWindow : Window
     {
         _fileSystemService = new FileSystemService(_iconService);
         _navigationHistory = new NavigationHistoryService(_iconService);
+        _bookmarkService = new BookmarkService(_iconService);
         _suppressSettingsUiChange = true;
         InitializeComponent();
+        InitializeExplorerFeatures();
         TerminalSplitter.DragCompleted += TerminalSplitter_DragCompleted;
         Loaded += MainWindow_Loaded;
         StateChanged += MainWindow_StateChanged;
@@ -103,6 +106,7 @@ public partial class MainWindow : Window
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _terminalAnimationInProgress = false;
+        DisposeDriveChangeNotifications();
         PersistSessionSettings();
         FinishHideTerminal(animate: false, waitForProcessStop: true);
     }
@@ -222,6 +226,7 @@ public partial class MainWindow : Window
         ApplyFileIconSettings();
         ApplyCustomFont();
         LoadDriveTree();
+        InitializeDriveChangeNotifications();
         ApplyExternalToolAvailability();
     }
 
@@ -307,6 +312,8 @@ public partial class MainWindow : Window
         control.GitHistoryRequested += (_, _) => HandleGitHistoryRequest(pane);
         control.GitBranchRequested += (_, e) => HandleGitBranchRequest(pane, e.TargetDirectory);
         control.AiExecuteQueryRequested += (_, _) => HandleAiExecuteQueryRequest(pane);
+
+        WirePaneExplorerFeatures(pane);
 
         _panes.Add(pane);
         UpdatePaneCloseButtonsVisibility();
@@ -464,6 +471,8 @@ public partial class MainWindow : Window
 
         if (_isTerminalVisible && !string.IsNullOrEmpty(pane.CurrentPath))
             PowerShellTerminal.SyncWorkingDirectory(pane.CurrentPath);
+
+        OnPaneFileListSelectionChanged(pane);
     }
 
     private async void PanePathSearchBox_TextChanged(DirectoryPaneState pane, TextChangedEventArgs e)
@@ -509,6 +518,8 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(input))
         {
             CancelPaneSearch(pane);
+            CancelPaneContentSearch(pane);
+            HideContentSearchPanel(restoreListing: false);
 
             if (!string.IsNullOrEmpty(pane.CurrentPath))
                 RefreshDirectoryListing(pane);
@@ -519,10 +530,17 @@ public partial class MainWindow : Window
         if (FileSystemService.TryResolveDirectoryPath(input, out var directoryPath))
         {
             CancelPaneSearch(pane);
+            CancelPaneContentSearch(pane);
 
             if (pane.CurrentPath is null || !PathsEqual(directoryPath, pane.CurrentPath))
                 NavigateToDirectory(pane, directoryPath, syncTree: pane == _activePane);
 
+            return;
+        }
+
+        if (ContentSearchService.TryParseQuery(input, out _))
+        {
+            await HandleContentSearchInputAsync(pane, input, token);
             return;
         }
 
@@ -765,6 +783,7 @@ public partial class MainWindow : Window
             }
 
             CancelPaneSearch(pane);
+            CancelPaneContentSearch(pane);
             CancelListingRefresh(pane);
 
             if (recordHistory &&
@@ -788,6 +807,8 @@ public partial class MainWindow : Window
             RefreshDirectoryListing(pane);
 
             _navigationHistory.RecordFolder(fullPath);
+
+            SyncActiveTabPath(pane);
 
             if (pane == _activePane)
                 UpdateNavigationButtons(pane);
@@ -1578,7 +1599,7 @@ public partial class MainWindow : Window
                 continue;
 
             var tag = (string?)menuItem.Tag;
-            if (tag is "GitInit" or "GitCommit" or "GitAmend" or "GitHistory" or "AiExecuteQuery")
+            if (tag is "GitInit" or "GitCommit" or "GitAmend" or "GitHistory" or "AiExecuteQuery" or "PaneSync" or "Bookmark")
                 continue;
 
             menuItem.IsEnabled = tag switch
@@ -1590,6 +1611,8 @@ public partial class MainWindow : Window
                 _ => hasResolvedPath
             };
         }
+
+        UpdateExplorerContextMenuState(pane);
     }
 
     private static bool TryGetGitContextDirectory(DirectoryPaneState pane, out string contextDirectory)
@@ -3675,8 +3698,7 @@ public partial class MainWindow : Window
 
     private DirectoryTreeNode? FindRootTreeNodeForPath(string fullPath)
     {
-        var desktopNode = _driveNodes.FirstOrDefault(node =>
-            string.Equals(node.Name, "Desktop", StringComparison.OrdinalIgnoreCase));
+        var desktopNode = _driveNodes.FirstOrDefault(node => !node.IsDrive);
 
         if (desktopNode is not null && IsPathWithinRoot(fullPath, desktopNode.FullPath))
             return desktopNode;
@@ -3930,6 +3952,8 @@ public partial class MainWindow : Window
         HistoryTitleText.Text = loc["UI_HistoryTitle"];
         HistoryEmptyText.Text = loc["UI_HistoryEmpty"];
         HistoryClearButton.Content = loc["UI_HistoryClear"];
+        ApplyExplorerFeatureLocalization(loc);
+        ApplyDirectoryTreeLocalization(loc);
         _navigationHistory.LoadFromSettings();
         UpdateHistoryEmptyState();
         SettingsScrollSensitivityLabel.Text = loc["UI_ScrollSensitivity"];

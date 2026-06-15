@@ -51,15 +51,23 @@ public sealed class FileSystemService
 
         var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
         if (!string.IsNullOrWhiteSpace(desktopPath) && Directory.Exists(desktopPath))
-            nodes.Add(CreateDirectoryNode(desktopPath, "Desktop"));
+            nodes.Add(CreateDirectoryNode(desktopPath, LocalizationManager.Instance["UI_Desktop"]));
 
         foreach (var drive in DriveInfo.GetDrives())
         {
-            if (!drive.IsReady)
-                continue;
-
             var rootPath = drive.RootDirectory.FullName;
-            nodes.Add(CreateDirectoryNode(rootPath, drive.Name.TrimEnd('\\'), isDrive: true));
+
+            if (!drive.IsReady)
+            {
+                if (drive.DriveType != DriveType.Removable)
+                    continue;
+
+                var displayName = DriveDisplayNameService.GetDisplayName(rootPath, drive.DriveType, isReady: false);
+                nodes.Add(CreateDriveNode(rootPath, displayName, drive));
+                continue;
+            }
+
+            nodes.Add(CreateDriveNode(rootPath, DriveDisplayNameService.GetDisplayName(drive), drive));
         }
 
         return nodes;
@@ -374,12 +382,17 @@ public sealed class FileSystemService
         };
     }
 
-    private DirectoryTreeNode CreateDirectoryNode(string fullPath, string displayName, bool isDrive = false)
+    private DirectoryTreeNode CreateDriveNode(string fullPath, string displayName, DriveInfo drive) =>
+        CreateDirectoryNode(fullPath, displayName, isDrive: true, isRemovable: drive.DriveType == DriveType.Removable);
+
+    private DirectoryTreeNode CreateDirectoryNode(string fullPath, string displayName, bool isDrive = false, bool isRemovable = false)
     {
         var node = new DirectoryTreeNode
         {
             Name = displayName,
             FullPath = fullPath,
+            IsDrive = isDrive,
+            IsRemovable = isRemovable,
             Icon = isDrive
                 ? _iconService.GetDriveIcon(fullPath)
                 : _iconService.GetFolderIcon(fullPath)

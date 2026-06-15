@@ -13,6 +13,8 @@ public sealed class DirectoryTreeNode : INotifyPropertyChanged
     public required string Name { get; init; }
     public required string FullPath { get; init; }
     public ImageSource? Icon { get; init; }
+    public bool IsDrive { get; init; }
+    public bool IsRemovable { get; init; }
     public ObservableCollection<DirectoryTreeNode> Children { get; } = [];
 
     public bool IsExpanded

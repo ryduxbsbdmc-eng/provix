@@ -61,6 +61,47 @@
                 </Button>
             </Grid>
 
+            <Border x:Name="TabBarHost"
+                    DockPanel.Dock="Top"
+                    Margin="8,0,8,4"
+                    Background="{DynamicResource ButtonChromeBrush}"
+                    CornerRadius="6"
+                    Padding="4,4,4,4"
+                    AllowDrop="True"
+                    DragOver="TabBarHost_DragOver"
+                    DragLeave="TabBarHost_DragLeave"
+                    Drop="TabBarHost_Drop">
+                <DockPanel LastChildFill="True">
+                    <Button x:Name="NewTabButton"
+                            DockPanel.Dock="Right"
+                            Width="24"
+                            Height="24"
+                            Margin="4,0,0,0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{DynamicResource TextSecondaryBrush}"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="10"
+                            Content="&#xE710;"
+                            ToolTip="New tab"
+                            Cursor="Hand"
+                            Click="NewTabButton_Click" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  AllowDrop="True"
+                                  DragOver="TabBarHost_DragOver"
+                                  DragLeave="TabBarHost_DragLeave"
+                                  Drop="TabBarHost_Drop">
+                        <StackPanel x:Name="TabBarPanel"
+                                    Orientation="Horizontal"
+                                    AllowDrop="True"
+                                    DragOver="TabBarHost_DragOver"
+                                    DragLeave="TabBarHost_DragLeave"
+                                    Drop="TabBarHost_Drop" />
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
             <Grid x:Name="GitStatusBar"
                   DockPanel.Dock="Bottom"
                   Height="26"
@@ -148,6 +189,7 @@
                           PreviewMouseMove="FileList_PreviewMouseMove"
                           PreviewMouseLeftButtonUp="FileList_PreviewMouseLeftButtonUp"
                           LostMouseCapture="FileList_LostMouseCapture"
+                          SelectionChanged="FileList_SelectionChanged"
                           DragOver="FileList_DragOver"
                           Drop="FileList_Drop">
                 <ListView.ContextMenu>
@@ -160,6 +202,23 @@
                                   Header="{loc:Loc UI_NewTextFile}"
                                   Tag="Create"
                                   Click="NewTextFileMenuItem_Click" />
+                        <Separator />
+                        <MenuItem x:Name="OpenInOtherPaneMenuItem"
+                                  Header="{loc:Loc UI_OpenInOtherPane}"
+                                  Tag="PaneSync"
+                                  Click="OpenInOtherPaneMenuItem_Click" />
+                        <MenuItem x:Name="CompareFoldersMenuItem"
+                                  Header="{loc:Loc UI_CompareFolders}"
+                                  Tag="PaneSync"
+                                  Click="CompareFoldersMenuItem_Click" />
+                        <MenuItem x:Name="AddBookmarkMenuItem"
+                                  Header="{loc:Loc UI_AddBookmark}"
+                                  Tag="Bookmark"
+                                  Click="AddBookmarkMenuItem_Click" />
+                        <MenuItem x:Name="RemoveBookmarkMenuItem"
+                                  Header="{loc:Loc UI_RemoveBookmark}"
+                                  Tag="Bookmark"
+                                  Click="RemoveBookmarkMenuItem_Click" />
                         <Separator />
                         <MenuItem x:Name="ExtractArchiveMenuItem"
                                   Header="{loc:Loc UI_ExtractArchive}"

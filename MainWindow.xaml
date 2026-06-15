@@ -632,7 +632,25 @@
                                       SelectedItemChanged="DirectoryTree_SelectedItemChanged"
                                       TreeViewItem.Expanded="DirectoryTreeItem_Expanded"
                                       DragOver="DirectoryTree_DragOver"
-                                      Drop="DirectoryTree_Drop">
+                                      Drop="DirectoryTree_Drop"
+                                      PreviewMouseRightButtonDown="DirectoryTree_PreviewMouseRightButtonDown"
+                                      ContextMenuOpening="DirectoryTree_ContextMenuOpening">
+                                <TreeView.ContextMenu>
+                                    <ContextMenu x:Name="DirectoryTreeContextMenu"
+                                                 Opened="DirectoryTreeContextMenu_Opened">
+                                        <MenuItem x:Name="DirectoryTreeOpenMenuItem"
+                                                  Click="DirectoryTreeOpenMenuItem_Click" />
+                                        <MenuItem x:Name="DirectoryTreeExpandMenuItem"
+                                                  Click="DirectoryTreeExpandMenuItem_Click" />
+                                        <MenuItem x:Name="DirectoryTreeReloadMenuItem"
+                                                  Click="DirectoryTreeReloadMenuItem_Click" />
+                                        <Separator x:Name="DirectoryTreeDriveSeparator" />
+                                        <MenuItem x:Name="DirectoryTreeEjectMenuItem"
+                                                  Click="DirectoryTreeEjectMenuItem_Click" />
+                                        <MenuItem x:Name="DirectoryTreeRefreshDrivesMenuItem"
+                                                  Click="DirectoryTreeRefreshDrivesMenuItem_Click" />
+                                    </ContextMenu>
+                                </TreeView.ContextMenu>
                                 <TreeView.ItemTemplate>
                                     <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                         <StackPanel Orientation="Horizontal">
@@ -671,7 +689,16 @@
 
                         <Grid Grid.Row="0"
                               Margin="0,0,0,8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
@@ -800,8 +827,120 @@
                                 </Border>
                             </Popup>
 
+                            <Button x:Name="BookmarksNavigationButton"
+                                    Grid.Column="3"
+                                    Style="{StaticResource NavButtonStyle}"
+                                    Content="&#xE735;"
+                                    ToolTip="Bookmarks"
+                                    Click="BookmarksNavigationButton_Click" />
+
+                            <Popup x:Name="BookmarksPopup"
+                                   PlacementTarget="{Binding ElementName=BookmarksNavigationButton}"
+                                   Placement="Bottom"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True"
+                                   PopupAnimation="Fade">
+                                <Border Background="{DynamicResource AppPopupBackground}"
+                                        BorderBrush="{DynamicResource AppPopupBorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Width="380"
+                                        MaxHeight="360"
+                                        Padding="8"
+                                        SnapsToDevicePixels="True">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" MinHeight="100" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock x:Name="BookmarksTitleText"
+                                                   Text="Bookmarks"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Margin="4,2,4,8" />
+
+                                        <ListBox x:Name="BookmarksListBox"
+                                                 Grid.Row="1"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 MouseLeftButtonUp="BookmarksListBox_MouseLeftButtonUp">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="2,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Image Source="{Binding Icon}"
+                                                               Width="16"
+                                                               Height="16"
+                                                               Margin="0,0,10,0"
+                                                               VerticalAlignment="Center" />
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                       FontSize="12"
+                                                                       FontWeight="SemiBold"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding Path}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       FontSize="10"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="0,2,0,0" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+
+                                        <TextBlock x:Name="BookmarksEmptyText"
+                                                   Grid.Row="1"
+                                                   Text="No bookmarks yet."
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="12"
+                                                   TextAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Margin="12"
+                                                   Visibility="Collapsed" />
+
+                                        <StackPanel Grid.Row="2"
+                                                    Orientation="Horizontal"
+                                                    HorizontalAlignment="Right"
+                                                    Margin="0,8,0,0">
+                                            <Button x:Name="BookmarkAddCurrentButton"
+                                                    Style="{StaticResource DialogActionButtonStyle}"
+                                                    Content="Add current folder"
+                                                    Margin="0,0,8,0"
+                                                    Click="BookmarkAddCurrentButton_Click" />
+                                            <Button x:Name="BookmarksClearButton"
+                                                    Style="{StaticResource DialogActionButtonStyle}"
+                                                    Content="Clear"
+                                                    Click="BookmarksClearButton_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Popup>
+
+                            <Button x:Name="ContentSearchButton"
+                                    Grid.Column="4"
+                                    Style="{StaticResource NavButtonStyle}"
+                                    Content="&#xE721;"
+                                    ToolTip="Search in folder"
+                                    Click="ContentSearchButton_Click" />
+
+                            <Button x:Name="PreviewToggleButton"
+                                    Grid.Column="5"
+                                    Style="{StaticResource NavButtonStyle}"
+                                    Content="&#xE890;"
+                                    ToolTip="Preview panel"
+                                    Click="PreviewToggleButton_Click" />
+
                             <TextBlock x:Name="SearchingIndicator"
-                                       Grid.Column="4"
+                                       Grid.Column="7"
                                        Text="Searching..."
                                        Foreground="{DynamicResource AccentBrush}"
                                        FontSize="11"
@@ -811,7 +950,7 @@
                                        Visibility="Collapsed" />
 
                             <TextBlock x:Name="ExtractingIndicator"
-                                       Grid.Column="4"
+                                       Grid.Column="7"
                                        Text="Extracting..."
                                        Foreground="{DynamicResource AccentBrush}"
                                        FontSize="11"
@@ -819,11 +958,80 @@
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
                                        Visibility="Collapsed" />
+                            </Grid>
+
+                            <Border x:Name="ContentSearchPanel"
+                                    Grid.Row="1"
+                                    Margin="0,0,0,8"
+                                    Background="{DynamicResource PanelBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushDark}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Visibility="Collapsed"
+                                    MaxHeight="220">
+                                <DockPanel LastChildFill="True" Margin="8">
+                                    <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="ContentSearchBox"
+                                                 Style="{DynamicResource AddressBarTextBoxStyle}"
+                                                 KeyDown="ContentSearchBox_KeyDown" />
+                                        <Button x:Name="ContentSearchCloseButton"
+                                                Grid.Column="1"
+                                                Style="{StaticResource DialogActionButtonStyle}"
+                                                Content="Close"
+                                                Margin="8,0,0,0"
+                                                Click="ContentSearchCloseButton_Click" />
+                                    </Grid>
+                                    <ListBox x:Name="ContentSearchResultsList"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             MouseDoubleClick="ContentSearchResultsList_MouseDoubleClick">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="2,4">
+                                                    <TextBlock Text="{Binding RelativePath}"
+                                                               Foreground="{DynamicResource AccentBrush}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               FontSize="10"
+                                                               TextTrimming="CharacterEllipsis">
+                                                        <Run Text="{Binding LineNumber, StringFormat='Line {0}: '}" />
+                                                        <Run Text="{Binding LineText}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </DockPanel>
+                            </Border>
                         </Grid>
 
                         <Grid x:Name="PaneHostContainer"
                               Grid.Row="1">
-                            <controls:DirectoryPaneHost x:Name="DirectoryPaneHost" />
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="240" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition x:Name="PreviewPanelColumn" Width="280" MinWidth="180" />
+                            </Grid.ColumnDefinitions>
+
+                            <controls:DirectoryPaneHost x:Name="DirectoryPaneHost"
+                                                        Grid.Column="0" />
+
+                            <GridSplitter x:Name="PreviewPanelSplitter"
+                                          Grid.Column="1"
+                                          Width="6"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Stretch"
+                                          Background="Transparent"
+                                          ShowsPreview="True" />
+
+                            <controls:FilePreviewPanel x:Name="FilePreviewPanelControl"
+                                                       Grid.Column="2" />
                         </Grid>
                     </Grid>
                 <!-- Dimming layer (shared by editor, dialogs) -->
@@ -2448,6 +2656,72 @@
                                 </StackPanel>
                             </Border>
                         </Border>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="FolderCompareOverlay"
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Panel.ZIndex="290"
+                        Visibility="Collapsed"
+                        Margin="4,8,4,8"
+                        Background="{DynamicResource ModalPanelBackgroundBrush}"
+                        CornerRadius="6"
+                        BorderBrush="{DynamicResource BorderBrushDark}"
+                        BorderThickness="1">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE8F1;"
+                                           FontFamily="Segoe MDL2 Assets"
+                                           FontSize="16"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0" />
+                                <TextBlock x:Name="FolderCompareTitleText"
+                                           Text="Compare folders"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock x:Name="FolderComparePathsText"
+                                       Margin="26,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <ListView x:Name="FolderCompareList"
+                                  Grid.Row="1"
+                                  Margin="0,12,0,0"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  MinHeight="200"
+                                  MaxHeight="420">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn x:Name="FolderCompareNameColumn" Header="Name" Width="220" DisplayMemberBinding="{Binding Name}" />
+                                    <GridViewColumn x:Name="FolderCompareLeftColumn" Header="Left" Width="100" DisplayMemberBinding="{Binding LeftDisplay}" />
+                                    <GridViewColumn x:Name="FolderCompareRightColumn" Header="Right" Width="100" DisplayMemberBinding="{Binding RightDisplay}" />
+                                    <GridViewColumn x:Name="FolderCompareStatusColumn" Header="Status" Width="120" DisplayMemberBinding="{Binding StatusDisplay}" />
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+
+                        <Button x:Name="FolderCompareCloseButton"
+                                Grid.Row="2"
+                                Style="{StaticResource DialogActionButtonStyle}"
+                                Content="Close"
+                                HorizontalAlignment="Right"
+                                Margin="0,12,0,0"
+                                Click="FolderCompareCloseButton_Click" />
                     </Grid>
                 </Border>
 

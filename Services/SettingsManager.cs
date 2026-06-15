@@ -181,6 +181,12 @@ public sealed class SettingsManager
         Save();
     }
 
+    public void UpdateBookmarks(IReadOnlyList<BookmarkRecord> bookmarks)
+    {
+        Current.Bookmarks = bookmarks.ToList();
+        Save();
+    }
+
     public void UpdateScrollSensitivity(double sensitivity)
     {
         sensitivity = Math.Clamp(sensitivity, MinScrollSensitivity, MaxScrollSensitivity);

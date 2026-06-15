@@ -4,7 +4,7 @@ namespace FileExplorer.Models;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 7;
+    public int SettingsVersion { get; set; } = 8;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppTheme Theme { get; set; } = AppTheme.Dark;
@@ -50,4 +50,10 @@ public sealed class AppSettings
     public int WindowState { get; set; }
 
     public List<NavigationHistoryRecord> NavigationHistory { get; set; } = [];
+
+    public List<BookmarkRecord> Bookmarks { get; set; } = [];
+
+    public bool ShowPreviewPanel { get; set; } = true;
+
+    public double PreviewPanelWidth { get; set; } = 280;
 }
