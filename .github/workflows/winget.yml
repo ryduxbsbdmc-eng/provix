@@ -91,10 +91,10 @@ jobs:
         shell: pwsh
         run: |
           $release = Invoke-RestMethod https://api.github.com/repos/microsoft/winget-create/releases/latest
-          $asset = $release.assets | Where-Object { $_.name -like 'wingetcreate*windows*x64*.zip' } | Select-Object -First 1
-          if (-not $asset) { throw "WingetCreate release asset not found" }
-          Invoke-WebRequest $asset.browser_download_url -OutFile wingetcreate.zip
-          Expand-Archive wingetcreate.zip -DestinationPath wingetcreate -Force
+          $asset = $release.assets | Where-Object { $_.name -eq 'wingetcreate.exe' } | Select-Object -First 1
+          if (-not $asset) { throw "wingetcreate.exe release asset not found" }
+          New-Item -ItemType Directory -Force -Path wingetcreate | Out-Null
+          Invoke-WebRequest $asset.browser_download_url -OutFile wingetcreate/wingetcreate.exe
 
       - name: Submit to WinGet community repo
         shell: pwsh
@@ -102,8 +102,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $dir = "${{ steps.manifest.outputs.dir }}"
-          $exe = Get-ChildItem wingetcreate -Recurse -Filter WingetCreate.exe | Select-Object -First 1
-          if (-not $exe) { throw "WingetCreate.exe not found" }
+          $exe = Get-ChildItem wingetcreate -Recurse -Filter wingetcreate.exe | Select-Object -First 1
+          if (-not $exe) { throw "wingetcreate.exe not found" }
           & $exe.FullName submit $dir `
             --package-git-repo "https://github.com/${{ github.repository }}" `
             --package-git-token "$env:GITHUB_TOKEN" `
