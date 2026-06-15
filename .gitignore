@@ -1,20 +1,188 @@
-# Build results
-bin/
-obj/
+# =============================================================================
+# Provix / FileExplorer — keep secrets and machine-specific files out of git
+# =============================================================================
 
-# Visual Studio / Rider
+# -----------------------------------------------------------------------------
+# Secrets, credentials, API keys (never commit these)
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+secrets/
+.secrets/
+credentials/
+credentials.json
+*credentials*.json
+*secrets*.json
+appsettings.local.json
+appsettings.*.local.json
+appsettings.Development.json
+settings.json
+settings.local.json
+**/FileExplorer/settings.json
+openrouter.key
+*.token
+
+# -----------------------------------------------------------------------------
+# .NET build output
+# -----------------------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+[Oo]ut/
+publish/
+artifacts/
+TestResults/
+[Bb]uild/
+*.pdb
+*.cache
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp_proj
+*_wpftmp.csproj
+*.tlog
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+
+# -----------------------------------------------------------------------------
+# Visual Studio / Rider / VS Code / Cursor
+# -----------------------------------------------------------------------------
 .vs/
 .idea/
-*.user
+*.rsuser
 *.suo
+*.user
 *.userosscache
 *.sln.docstates
+*.userprefs
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json.example
 
-# OS
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# -----------------------------------------------------------------------------
+# OS & sync junk
+# -----------------------------------------------------------------------------
 Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
 Desktop.ini
-.DS_Store
+$RECYCLE.BIN/
+*.stackdump
+[Dd]esktop.ini
 
-# Logs and temp
-*.log
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# OneDrive / cloud sync conflict copies
+*~$*
 *.tmp
+*.temp
+*.swp
+*.swo
+*conflict*
+*.sync-conflict-*
+
+# -----------------------------------------------------------------------------
+# Test, coverage, profiling
+# -----------------------------------------------------------------------------
+[Cc]overage/
+*.coverage
+*.coveragexml
+*.dotCover
+.axoCover/
+[Bb]enchmark[Dd]ot[Nn]et.Artifacts/
+
+# -----------------------------------------------------------------------------
+# Archives & dumps (often contain private data)
+# -----------------------------------------------------------------------------
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.bak
+*.backup
+*.old
+*.dump
+*.dmp
+memory.dmp
+
+# Keep locale/source archives out; add exceptions below if you ship assets
+# !Assets/**/*.zip
+
+# -----------------------------------------------------------------------------
+# Python (if you add scripts later)
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# -----------------------------------------------------------------------------
+# Misc local tooling
+# -----------------------------------------------------------------------------
+*.DotSettings.user
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.sln.iml
+ncrunch*
+_NCrunch_*
+.ionide/
+.fake/
+paket-files/
