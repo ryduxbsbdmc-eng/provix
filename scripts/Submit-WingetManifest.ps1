@@ -29,16 +29,8 @@ if (-not [System.IO.Path]::IsPathRooted($ManifestDir)) {
 $env:GH_TOKEN = $token
 $branch = "Provix.Provix-$PackageVersion"
 $targetRel = "manifests/p/Provix/Provix/$PackageVersion"
-if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
-    $workDir = Join-Path ([System.IO.Path]::GetTempPath()) "winget-pkgs-pr"
-}
-else {
-    $workDir = Join-Path $env:RUNNER_TEMP "winget-pkgs-pr"
-}
-
-if (Test-Path $workDir) {
-    Remove-Item -Recurse -Force $workDir
-}
+$forkApi = "repos/$ForkOwner/winget-pkgs"
+$upstreamApi = "repos/$UpstreamRepo"
 
 Write-Host "Validating GitHub token..."
 $user = Invoke-RestMethod `
@@ -48,44 +40,6 @@ $user = Invoke-RestMethod `
         "User-Agent"  = "provix-winget"
     }
 Write-Host "Authenticated as $($user.login)"
-
-# Classic PAT exposes scopes in response headers; fine-grained tokens do not.
-try {
-    $scopeResponse = Invoke-WebRequest `
-        -Uri "https://api.github.com/user" `
-        -Headers @{
-            Authorization = "Bearer $token"
-            "User-Agent"  = "provix-winget"
-        } `
-        -Method Get
-    $scopes = $scopeResponse.Headers['X-OAuth-Scopes']
-    if ($scopes) {
-        Write-Host "Token scopes: $scopes"
-        if ($scopes -notmatch 'public_repo|\brepo\b') {
-            throw "WINGET_TOKEN must be a classic PAT with public_repo scope."
-        }
-    }
-    else {
-        Write-Host "Token scopes header missing (likely fine-grained token)."
-        Write-Host "winget submission requires a classic PAT with public_repo scope."
-    }
-}
-catch {
-    if ($_.Exception.Message -match 'public_repo') { throw }
-}
-
-Write-Host "Checking push access to fork $ForkOwner/winget-pkgs..."
-try {
-    Invoke-RestMethod `
-        -Uri "https://api.github.com/repos/$ForkOwner/winget-pkgs" `
-        -Headers @{
-            Authorization = "Bearer $token"
-            "User-Agent"  = "provix-winget"
-        } | Out-Null
-}
-catch {
-    throw "Cannot access fork $ForkOwner/winget-pkgs with WINGET_TOKEN. Use a classic PAT with public_repo scope."
-}
 
 $existingPr = gh pr list `
     --repo $UpstreamRepo `
@@ -98,50 +52,55 @@ if ($existingPr) {
     return
 }
 
-Write-Host "Cloning $UpstreamRepo (sparse)..."
-git clone `
-    --filter=blob:none `
-    --sparse `
-    --depth 1 `
-    --branch master `
-    "https://x-access-token:${token}@github.com/$UpstreamRepo.git" `
-    $workDir
-Set-Location $workDir
+Write-Host "Reading fork master commit..."
+$baseSha = gh api "$forkApi/git/ref/heads/master" --jq .object.sha
+Write-Host "Fork base commit: $baseSha"
 
-git sparse-checkout set "manifests/p/Provix/Provix"
-git checkout master
-
-git remote add fork "https://x-access-token:${token}@github.com/$ForkOwner/winget-pkgs.git"
-git checkout -b $branch
-
-New-Item -ItemType Directory -Force -Path $targetRel | Out-Null
-Get-ChildItem -Path $ManifestDir -Filter "*.yaml" | ForEach-Object {
-    Copy-Item -Path $_.FullName -Destination (Join-Path $targetRel $_.Name) -Force
+Write-Host "Creating branch $branch on fork..."
+$branchRef = "heads/$branch"
+$null = gh api "$forkApi/git/ref/$branchRef" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    $refPayload = @{ sha = $baseSha; force = $true } | ConvertTo-Json -Compress
+    $refPath = Join-Path $env:TEMP "winget-ref-$([Guid]::NewGuid().ToString('N')).json"
+    try {
+        [System.IO.File]::WriteAllText($refPath, $refPayload, [System.Text.UTF8Encoding]::new($false))
+        gh api "$forkApi/git/refs/$branchRef" -X PATCH --input $refPath | Out-Null
+    }
+    finally {
+        if (Test-Path $refPath) { Remove-Item -Force $refPath }
+    }
 }
-
-git config user.name "github-actions[bot]"
-git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git add $targetRel
-
-if (git diff --cached --quiet) {
-    throw "No manifest changes to commit."
+else {
+    gh api "$forkApi/git/refs" -f ref="refs/heads/$branch" -f sha=$baseSha | Out-Null
 }
-
-git commit -m "Add Provix.Provix version $PackageVersion"
-
-Write-Host "Pushing branch to fork..."
-git push --force fork "${branch}:${branch}"
 if ($LASTEXITCODE -ne 0) {
-    throw @"
-Failed to push branch to https://github.com/$ForkOwner/winget-pkgs.
+    throw "Failed to create branch $branch on fork."
+}
 
-Your WINGET_TOKEN cannot write to the fork. Fix:
-1. Delete current WINGET_TOKEN secret
-2. Create a classic PAT: https://github.com/settings/tokens
-3. Enable ONLY the public_repo checkbox
-4. Save as repository secret WINGET_TOKEN
-5. Re-run Publish to WinGet workflow
-"@
+$commitMessage = "Add Provix.Provix version $PackageVersion"
+Get-ChildItem -Path $ManifestDir -Filter "*.yaml" | ForEach-Object {
+    $relativePath = "$targetRel/$($_.Name)"
+    $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+    $encoded = [Convert]::ToBase64String($bytes)
+
+    $payload = @{
+        message = $commitMessage
+        content = $encoded
+        branch  = $branch
+    } | ConvertTo-Json -Compress
+
+    $payloadPath = Join-Path $env:TEMP "winget-content-$([Guid]::NewGuid().ToString('N')).json"
+    try {
+        [System.IO.File]::WriteAllText($payloadPath, $payload, [System.Text.UTF8Encoding]::new($false))
+        gh api "$forkApi/contents/$relativePath" -X PUT --input $payloadPath | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upload $relativePath."
+        }
+        Write-Host "Uploaded $relativePath"
+    }
+    finally {
+        if (Test-Path $payloadPath) { Remove-Item -Force $payloadPath }
+    }
 }
 
 Write-Host "Creating pull request..."
@@ -159,7 +118,7 @@ Automated manifest submission for Provix $PackageVersion.
 "@
 
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($prUrl)) {
-    throw "Failed to create pull request. Ensure WINGET_TOKEN is a classic PAT with public_repo scope."
+    throw "Failed to create pull request."
 }
 
 Write-Host "WinGet PR created: $prUrl"
