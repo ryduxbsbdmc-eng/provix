@@ -15,54 +15,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version
-        id: version
+      - name: Prepare manifests
+        id: manifest
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          $tag = "${{ github.event.release.tag_name }}"
-          if ([string]::IsNullOrWhiteSpace($tag)) { $tag = "v1.0.2" }
-          $version = $tag -replace '^v', ''
-          "version=$version" >> $env:GITHUB_OUTPUT
+          function New-LocaleFiles([string]$dir, [string]$packageVersion, [string]$releaseTag) {
+            Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.en-US.yaml" "$dir/Provix.Provix.locale.en-US.yaml"
+            Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.ru-RU.yaml" "$dir/Provix.Provix.locale.ru-RU.yaml"
+            foreach ($file in @("$dir/Provix.Provix.locale.en-US.yaml", "$dir/Provix.Provix.locale.ru-RU.yaml")) {
+              (Get-Content $file -Raw) `
+                -replace 'PackageVersion: .*', "PackageVersion: $packageVersion" `
+                -replace 'releases/tag/[^\r\n]+', "releases/tag/$releaseTag" |
+                Set-Content $file
+            }
+          }
 
-      - name: Download installer and compute SHA256
-        id: installer
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $tag = if ("${{ github.event.release.tag_name }}") { "${{ github.event.release.tag_name }}" } else { "v$version" }
-          $tag = $tag -replace '^v', ''
-          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/Provix-Setup-$version.exe"
-          $out = "Provix-Setup-$version.exe"
-          Write-Host "Downloading $url"
-          Invoke-WebRequest -Uri $url -OutFile $out
-          $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
-          "installer_url=$url" >> $env:GITHUB_OUTPUT
-          "installer_sha256=$hash" >> $env:GITHUB_OUTPUT
+          if ($env:RELEASE_TAG) {
+            $tag = $env:RELEASE_TAG -replace '^v', ''
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/$($env:RELEASE_TAG)" -Headers @{ "User-Agent" = "provix-winget" }
+            $asset = $release.assets | Where-Object { $_.name -like 'Provix-Setup-*.exe' } | Select-Object -First 1
+            if (-not $asset) { throw "Provix-Setup-*.exe asset not found in release $($env:RELEASE_TAG)" }
 
-      - name: Generate WinGet manifests
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $url = "${{ steps.installer.outputs.installer_url }}"
-          $sha = "${{ steps.installer.outputs.installer_sha256 }}"
-          $dir = "winget-generated/Provix.Provix/$version"
-          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $installerVersion = if ($asset.name -match 'Provix-Setup-(.+)\.exe') { $Matches[1] } else { $tag }
+            $dir = "winget-generated/Provix.Provix/$tag"
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
-          @"
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $asset.name
+            $sha = (Get-FileHash $asset.name -Algorithm SHA256).Hash.ToLowerInvariant()
+
+            @"
           # yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
 
           PackageIdentifier: Provix.Provix
-          PackageVersion: $version
+          PackageVersion: $tag
           DefaultLocale: en-US
           ManifestType: version
           ManifestVersion: 1.6.0
           "@ | Set-Content "$dir/Provix.Provix.yaml"
 
-          @"
+            @"
           # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 
           PackageIdentifier: Provix.Provix
-          PackageVersion: $version
+          PackageVersion: $tag
           MinimumOSVersion: 10.0.0.0
           InstallerType: inno
           Scope: user
@@ -72,20 +69,23 @@ jobs:
           - silentWithProgress
           UpgradeBehavior: install
           AppsAndFeaturesEntries:
-          - DisplayName: Provix version $version
+          - DisplayName: Provix version $installerVersion
             ProductCode: 8F4E2A91-6C3D-4B8E-9F1A-2D7E5B4C9013_is1
           Installers:
           - Architecture: x64
-            InstallerUrl: $url
+            InstallerUrl: $($asset.browser_download_url)
             InstallerSha256: $sha
           ManifestType: installer
           ManifestVersion: 1.6.0
           "@ | Set-Content "$dir/Provix.Provix.installer.yaml"
 
-          Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.en-US.yaml" "$dir/Provix.Provix.locale.en-US.yaml"
-          Copy-Item "winget/Provix.Provix/1.0.2/Provix.Provix.locale.ru-RU.yaml" "$dir/Provix.Provix.locale.ru-RU.yaml"
-          (Get-Content "$dir/Provix.Provix.locale.en-US.yaml" -Raw) -replace 'PackageVersion: .*', "PackageVersion: $version" -replace 'releases/tag/.*', "releases/tag/$version" | Set-Content "$dir/Provix.Provix.locale.en-US.yaml"
-          (Get-Content "$dir/Provix.Provix.locale.ru-RU.yaml" -Raw) -replace 'PackageVersion: .*', "PackageVersion: $version" -replace 'releases/tag/.*', "releases/tag/$version" | Set-Content "$dir/Provix.Provix.locale.ru-RU.yaml"
+            New-LocaleFiles $dir $tag $tag
+          } else {
+            $dir = "winget/Provix.Provix/1.0.2"
+            if (-not (Test-Path $dir)) { throw "Manifest directory not found: $dir" }
+          }
+
+          "dir=$dir" >> $env:GITHUB_OUTPUT
 
       - name: Download WingetCreate
         shell: pwsh
@@ -101,10 +101,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "${{ steps.version.outputs.version }}"
+          $dir = "${{ steps.manifest.outputs.dir }}"
           $exe = Get-ChildItem wingetcreate -Recurse -Filter WingetCreate.exe | Select-Object -First 1
           if (-not $exe) { throw "WingetCreate.exe not found" }
-          & $exe.FullName submit "winget-generated/Provix.Provix/$version" `
+          & $exe.FullName submit $dir `
             --package-git-repo "https://github.com/${{ github.repository }}" `
             --package-git-token "$env:GITHUB_TOKEN" `
             --pull-request-to-https://github.com/microsoft/winget-pkgs
