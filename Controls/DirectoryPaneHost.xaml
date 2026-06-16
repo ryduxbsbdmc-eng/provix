@@ -1,13 +1,20 @@
-<UserControl x:Class="FileExplorer.Controls.DirectoryPaneHost"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             MinHeight="200">
-    <Grid x:Name="PaneHostRoot">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <Grid x:Name="PaneHostGrid"
-              HorizontalAlignment="Stretch"
-              VerticalAlignment="Stretch" />
-    </Grid>
-</UserControl>
+<UserControl x:Class="FileExplorer.Controls.DirectoryPaneHost"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinHeight="200"
+             SizeChanged="DirectoryPaneHost_SizeChanged">
+    <Grid x:Name="PaneHostRoot">
+        <ScrollViewer x:Name="PaneScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled"
+                      PanningMode="Both"
+                      SizeChanged="PaneScrollViewer_SizeChanged">
+            <ScrollViewer.Resources>
+                <Style TargetType="ScrollBar" BasedOn="{StaticResource PaneHostScrollBarStyle}" />
+            </ScrollViewer.Resources>
+            <Grid x:Name="PaneHostGrid"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Stretch" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

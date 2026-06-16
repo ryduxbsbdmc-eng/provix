@@ -1,4 +1,4 @@
-<Window x:Class="FileExplorer.MainWindow"
+﻿<Window x:Class="FileExplorer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:FileExplorer.Controls"
@@ -326,68 +326,6 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-        </Style>
-
-        <!-- Dark minimal scrollbars -->
-        <Style x:Key="ScrollBarThumbStyle" TargetType="Thumb">
-            <Setter Property="OverridesDefaultStyle" Value="True" />
-            <Setter Property="IsTabStop" Value="False" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Thumb">
-                        <Border Background="{DynamicResource ScrollBarThumbBrush}"
-                                CornerRadius="4"
-                                Margin="2" />
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="ScrollBarRepeatButtonStyle" TargetType="RepeatButton">
-            <Setter Property="OverridesDefaultStyle" Value="True" />
-            <Setter Property="IsTabStop" Value="False" />
-            <Setter Property="Focusable" Value="False" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RepeatButton">
-                        <Border Background="Transparent" />
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="ScrollBar">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Width" Value="10" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollBar">
-                        <Grid Background="Transparent">
-                            <Track x:Name="PART_Track"
-                                   IsDirectionReversed="True"
-                                   Focusable="False">
-                                <Track.DecreaseRepeatButton>
-                                    <RepeatButton Style="{StaticResource ScrollBarRepeatButtonStyle}"
-                                                  Command="ScrollBar.PageUpCommand" />
-                                </Track.DecreaseRepeatButton>
-                                <Track.IncreaseRepeatButton>
-                                    <RepeatButton Style="{StaticResource ScrollBarRepeatButtonStyle}"
-                                                  Command="ScrollBar.PageDownCommand" />
-                                </Track.IncreaseRepeatButton>
-                                <Track.Thumb>
-                                    <Thumb Style="{StaticResource ScrollBarThumbStyle}" />
-                                </Track.Thumb>
-                            </Track>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="Orientation" Value="Horizontal">
-                    <Setter Property="Width" Value="Auto" />
-                    <Setter Property="Height" Value="10" />
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
         <Style TargetType="GridViewColumnHeader">
@@ -2634,7 +2572,7 @@
                                                     <Run Text="{Binding Hash}"
                                                          FontWeight="SemiBold"
                                                          FontFamily="Consolas" />
-                                                    <Run Text="  В·  " />
+                                                    <Run Text="  Р’В·  " />
                                                     <Run Text="{Binding Date}" />
                                                 </TextBlock>
                                                 <TextBlock Text="{Binding Message}"

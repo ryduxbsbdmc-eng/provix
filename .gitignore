@@ -49,6 +49,7 @@ wingetcreate/
 winget-generated/
 artifacts/
 provix-portable/
+network-test/
 TestResults/
 [Bb]uild/
 *.pdb
@@ -163,7 +164,7 @@ memory.dmp
 # !Assets/**/*.zip
 
 # -----------------------------------------------------------------------------
-# Python (if you add scripts later)
+# Python / local tooling
 # -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]

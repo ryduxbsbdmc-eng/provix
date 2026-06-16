@@ -26,6 +26,9 @@ public sealed class NavigationHistoryService
             if (string.IsNullOrWhiteSpace(record.Path))
                 continue;
 
+            if (record.Path.StartsWith("provix-ftp:", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             var item = CreateItem(record);
             if (item is not null)
                 Items.Add(item);
@@ -128,14 +131,15 @@ public sealed class NavigationHistoryService
 
         var loc = LocalizationManager.Instance;
         var visitedAt = new DateTime(record.VisitedAtTicks, DateTimeKind.Utc).ToLocalTime();
+        var displayName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            is { Length: > 0 } name
+                ? name
+                : fullPath;
 
         return new NavigationHistoryItem
         {
             Path = fullPath,
-            DisplayName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
-                           is { Length: > 0 } name
-                ? name
-                : fullPath,
+            DisplayName = displayName,
             Kind = kind,
             VisitedAt = visitedAt,
             Icon = kind == NavigationHistoryKind.Folder

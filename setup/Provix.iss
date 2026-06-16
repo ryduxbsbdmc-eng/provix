@@ -3,7 +3,8 @@
 ; WinGet: silent install /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
 
 #define MyAppName "Provix"
-#define MyAppVersion "1.3.5"
+#define MyAppVersion "1.4.6"
+#define MyAppVersionInfo "1.4.6.0"
 #define MyAppPublisher "Provix"
 #define MyAppExeName "FileExplorer.exe"
 #define MyAppSourceDir "..\publish"
@@ -38,11 +39,11 @@ CloseApplications=force
 RestartIfNeededByRun=no
 ChangesAssociations=no
 CreateUninstallRegKey=yes
-VersionInfoVersion={#MyAppVersion}.0
+VersionInfoVersion={#MyAppVersionInfo}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Provix file manager for Windows
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersionInfo}
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"

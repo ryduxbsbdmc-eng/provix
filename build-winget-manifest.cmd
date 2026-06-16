@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-for /f "usebackq tokens=2 delims=^"" %%V in (`findstr /B "#define MyAppVersion" setup\Provix.iss`) do set "VERSION=%%V"
+for /f "usebackq tokens=2 delims=^"" %%V in (`findstr /B /C:"#define MyAppVersion " setup\Provix.iss`) do set "VERSION=%%V"
 
 if "%VERSION%"=="" (
   echo Could not read version from setup\Provix.iss

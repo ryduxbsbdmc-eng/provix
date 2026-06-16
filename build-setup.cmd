@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo [1/2] Building release...
-call build.cmd single
+call build.cmd fast
 if errorlevel 1 exit /b 1
 
 if not exist "publish\FileExplorer.exe" (
@@ -28,6 +28,6 @@ echo [2/2] Creating installer...
 if errorlevel 1 exit /b 1
 
 echo.
-for /f "usebackq tokens=2 delims=^"" %%V in (`findstr /B "#define MyAppVersion" setup\Provix.iss`) do set "APP_VERSION=%%V"
+for /f "usebackq tokens=2 delims=^"" %%V in (`findstr /B /C:"#define MyAppVersion " setup\Provix.iss`) do set "APP_VERSION=%%V"
 echo Done: %~dp0installer\Provix-Setup-%APP_VERSION%.exe
 exit /b 0

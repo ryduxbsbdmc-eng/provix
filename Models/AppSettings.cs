@@ -4,7 +4,7 @@ namespace FileExplorer.Models;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 10;
+    public int SettingsVersion { get; set; } = 13;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppTheme Theme { get; set; } = AppTheme.Dark;

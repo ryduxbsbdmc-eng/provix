@@ -662,7 +662,7 @@ public partial class MainWindow : Window
             if (source is TreeViewItem { DataContext: DirectoryTreeNode node } &&
                 !string.IsNullOrEmpty(node.FullPath))
             {
-                var folderPath = Path.GetFullPath(node.FullPath);
+                var folderPath = NormalizeDropTargetPath(node.FullPath);
 
                 if (!IsPathInDragSource(folderPath, sourcePaths))
                     return folderPath;
@@ -674,7 +674,7 @@ public partial class MainWindow : Window
             if (source is TreeViewItem { DataContext: DirectoryTreeNode node } &&
                 !string.IsNullOrEmpty(node.FullPath))
             {
-                var folderPath = Path.GetFullPath(node.FullPath);
+                var folderPath = NormalizeDropTargetPath(node.FullPath);
 
                 if (!IsPathInDragSource(folderPath, sourcePaths))
                     return folderPath;
@@ -683,6 +683,8 @@ public partial class MainWindow : Window
 
         return ActivePane.CurrentPath;
     }
+
+    private static string NormalizeDropTargetPath(string path) => Path.GetFullPath(path);
 
     private static bool IsPathInDragSource(string path, IReadOnlyList<string> sourcePaths)
     {
@@ -798,10 +800,21 @@ public partial class MainWindow : Window
     {
         try
         {
-            var fullPath = Path.GetFullPath(path);
+            var loc = LocalizationManager.Instance;
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(path);
+            }
+            catch
+            {
+                StatusText.Text = loc["UI_FolderNotFound"];
+                return;
+            }
+
             if (!Directory.Exists(fullPath))
             {
-                StatusText.Text = "Folder not found.";
+                StatusText.Text = loc["UI_FolderNotFound"];
                 return;
             }
 
@@ -838,7 +851,7 @@ public partial class MainWindow : Window
         }
         catch (UnauthorizedAccessException)
         {
-            StatusText.Text = "Access denied to this folder.";
+            StatusText.Text = LocalizationManager.Instance["UI_AccessDenied"];
         }
         catch (Exception ex)
         {
@@ -3697,7 +3710,9 @@ public partial class MainWindow : Window
             if (string.IsNullOrEmpty(relativePath))
                 return;
 
-            foreach (var segment in relativePath.Split('\\', StringSplitOptions.RemoveEmptyEntries))
+            var segments = relativePath.Split('\\', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var segment in segments)
             {
                 _fileSystemService.LoadChildDirectories(currentNode);
                 DirectoryTree.UpdateLayout();
