@@ -28,7 +28,7 @@
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="&#xE756;"
-                                   FontFamily="Segoe MDL2 Assets"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    FontSize="13"
                                    Foreground="{DynamicResource AccentBrush}"
                                    VerticalAlignment="Center"
@@ -54,7 +54,7 @@
                             Background="Transparent"
                             BorderThickness="0"
                             Foreground="{DynamicResource TextSecondaryBrush}"
-                            FontFamily="Segoe MDL2 Assets"
+                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                             FontSize="10"
                             Content="&#xE8BB;"
                             ToolTip="{loc:Loc UI_Close}"

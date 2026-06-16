@@ -180,7 +180,7 @@ public partial class DirectoryPaneControl : UserControl
                 Tag = tab,
                 Width = 20,
                 Height = 20,
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
                 FontSize = 8,
                 Padding = new Thickness(0),
                 Background = Brushes.Transparent,

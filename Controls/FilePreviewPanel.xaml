@@ -27,7 +27,7 @@
                         Background="Transparent"
                         BorderThickness="0"
                         Foreground="{DynamicResource TextSecondaryBrush}"
-                        FontFamily="Segoe MDL2 Assets"
+                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                         FontSize="10"
                         Content="&#xE8BB;"
                         Cursor="Hand"

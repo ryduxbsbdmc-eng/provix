@@ -4,7 +4,7 @@ namespace FileExplorer.Models;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 8;
+    public int SettingsVersion { get; set; } = 10;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppTheme Theme { get; set; } = AppTheme.Dark;
@@ -26,6 +26,18 @@ public sealed class AppSettings
 
     public bool UseBuiltInMediaViewer { get; set; } = true;
 
+    /// <summary>Hide the window to the system tray when minimized instead of the taskbar.</summary>
+    public bool MinimizeToTray { get; set; }
+
+    /// <summary>Launch Provix automatically when the user signs in to Windows.</summary>
+    public bool RunAtStartup { get; set; }
+
+    /// <summary>Wobbly jelly physics when dragging the window by the title bar.</summary>
+    public bool JellyDragEnabled { get; set; } = true;
+
+    /// <summary>1.0 = default jelly strength.</summary>
+    public double JellyIntensity { get; set; } = 1.0;
+
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AiProvider AiProvider { get; set; } = AiProvider.OpenRouter;
 
@@ -42,9 +54,9 @@ public sealed class AppSettings
 
     public bool IsTerminalOpen { get; set; }
 
-    public double WindowWidth { get; set; } = 1100;
+    public double WindowWidth { get; set; } = 1424;
 
-    public double WindowHeight { get; set; } = 680;
+    public double WindowHeight { get; set; } = 964;
 
     /// <summary>0 = Normal, 1 = Minimized, 2 = Maximized.</summary>
     public int WindowState { get; set; }

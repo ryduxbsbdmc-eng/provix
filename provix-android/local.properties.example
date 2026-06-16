@@ -1,0 +1,8 @@
+# Copy to local.properties after installing Android Studio.
+# Windows example (use forward slashes):
+# sdk.dir=C:/Users/YOUR_USER/AppData/Local/Android/Sdk
+#
+# Or run from repo root:
+#   powershell -File scripts/Setup-AndroidSdk.ps1
+
+sdk.dir=C:/Users/rydux/AppData/Local/Android/Sdk

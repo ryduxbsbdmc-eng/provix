@@ -254,6 +254,47 @@ public sealed class SettingsManager
         SettingChanged?.Invoke(this, nameof(AppSettings.UseBuiltInMediaViewer));
     }
 
+    public void UpdateMinimizeToTray(bool enabled)
+    {
+        if (Current.MinimizeToTray == enabled)
+            return;
+
+        Current.MinimizeToTray = enabled;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.MinimizeToTray));
+    }
+
+    public void UpdateRunAtStartup(bool enabled)
+    {
+        if (Current.RunAtStartup == enabled)
+            return;
+
+        Current.RunAtStartup = enabled;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.RunAtStartup));
+    }
+
+    public void UpdateJellyDragEnabled(bool enabled)
+    {
+        if (Current.JellyDragEnabled == enabled)
+            return;
+
+        Current.JellyDragEnabled = enabled;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.JellyDragEnabled));
+    }
+
+    public void UpdateJellyIntensity(double intensity)
+    {
+        intensity = Math.Clamp(intensity, MinJellyIntensity, MaxJellyIntensity);
+        if (Math.Abs(Current.JellyIntensity - intensity) < 0.001)
+            return;
+
+        Current.JellyIntensity = intensity;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.JellyIntensity));
+    }
+
     public void UpdateTerminalPreferences(double panelHeight, bool isOpen)
     {
         panelHeight = Math.Clamp(panelHeight, MinTerminalPanelHeight, MaxTerminalPanelHeight);
@@ -306,6 +347,10 @@ public sealed class SettingsManager
     public const double MaxScrollSensitivity = 3.0;
     public const double DefaultScrollSensitivity = 1.0;
 
+    public const double MinJellyIntensity = 0.25;
+    public const double MaxJellyIntensity = 2.5;
+    public const double DefaultJellyIntensity = 1.0;
+
     public const double MinTerminalPanelHeight = 120;
     public const double MaxTerminalPanelHeight = 600;
     public const double DefaultTerminalPanelHeight = 220;
@@ -335,6 +380,14 @@ public sealed class SettingsManager
             MinScrollSensitivity,
             MaxScrollSensitivity);
 
+        if (settings.JellyIntensity <= 0)
+            settings.JellyIntensity = DefaultJellyIntensity;
+
+        settings.JellyIntensity = Math.Clamp(
+            settings.JellyIntensity,
+            MinJellyIntensity,
+            MaxJellyIntensity);
+
         if (settings.TerminalPanelHeight <= 0)
             settings.TerminalPanelHeight = DefaultTerminalPanelHeight;
 
@@ -343,11 +396,27 @@ public sealed class SettingsManager
             MinTerminalPanelHeight,
             MaxTerminalPanelHeight);
 
+        // v9: enlarge the default startup window for users coming from older versions.
+        if (settings.SettingsVersion < 9)
+        {
+            settings.WindowWidth = 1280;
+            settings.WindowHeight = 820;
+            settings.SettingsVersion = 9;
+        }
+
+        // v10: grow window to fit jelly safe-zone margins without shrinking visible chrome.
+        if (settings.SettingsVersion < 10)
+        {
+            settings.WindowWidth += 144;
+            settings.WindowHeight += 144;
+            settings.SettingsVersion = 10;
+        }
+
         if (settings.WindowWidth < MinWindowWidth)
-            settings.WindowWidth = 1100;
+            settings.WindowWidth = 1424;
 
         if (settings.WindowHeight < MinWindowHeight)
-            settings.WindowHeight = 680;
+            settings.WindowHeight = 964;
 
         settings.WindowWidth = Math.Clamp(settings.WindowWidth, MinWindowWidth, MaxWindowWidth);
         settings.WindowHeight = Math.Clamp(settings.WindowHeight, MinWindowHeight, MaxWindowHeight);

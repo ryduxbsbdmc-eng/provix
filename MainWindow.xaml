@@ -7,8 +7,8 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         x:Name="RootWindow"
         Title="provix"
-        Width="1100"
-        Height="680"
+        Width="1424"
+        Height="964"
         MinWidth="720"
         MinHeight="420"
         WindowStartupLocation="CenterScreen"
@@ -28,7 +28,7 @@
             <Setter Property="Background" Value="{DynamicResource ButtonChromeBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -262,7 +262,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
             <Setter Property="FontSize" Value="10" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -496,8 +496,11 @@
         </Style>
     </Window.Resources>
 
-    <!-- Outer shell with glass background -->
-    <Border Background="{DynamicResource GlassBackgroundBrush}"
+    <!-- Invisible safe zone so jelly transforms + shadow stay inside the window bounds. -->
+    <Grid x:Name="JellySafeHost" ClipToBounds="False">
+    <Border x:Name="WindowShell"
+            Margin="0"
+            Background="{DynamicResource GlassBackgroundBrush}"
             BorderBrush="{DynamicResource BorderBrushDark}"
             BorderThickness="1"
             CornerRadius="10"
@@ -509,7 +512,7 @@
                               Color="Black" />
         </Border.Effect>
 
-        <Grid>
+        <Grid x:Name="JellyContentHost">
             <Grid.RowDefinitions>
                 <RowDefinition Height="36" />
                 <RowDefinition Height="Auto" />
@@ -532,16 +535,11 @@
                                 VerticalAlignment="Center"
                                 Margin="14,0,0,0">
                         <TextBlock Text="&#xE8B7;"
-                                   FontFamily="Segoe MDL2 Assets"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    FontSize="14"
                                    Foreground="{DynamicResource AccentBrush}"
                                    VerticalAlignment="Center"
-                                   Margin="0,0,8,0"
-                                   RenderTransformOrigin="0.5,0.5">
-                            <TextBlock.RenderTransform>
-                                <RotateTransform Angle="-90" />
-                            </TextBlock.RenderTransform>
-                        </TextBlock>
+                                   Margin="0,0,8,0" />
                         <TextBlock x:Name="AppTitleText"
                                    Text="{loc:Loc UI_AppTitle}"
                                    Foreground="{DynamicResource TextPrimaryBrush}"
@@ -1077,7 +1075,7 @@
                                 <StackPanel Orientation="Horizontal"
                                             VerticalAlignment="Center">
                                     <TextBlock Text="&#xE943;"
-                                               FontFamily="Segoe MDL2 Assets"
+                                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                FontSize="14"
                                                Foreground="{DynamicResource AccentBrush}"
                                                VerticalAlignment="Center"
@@ -1159,7 +1157,7 @@
                                 <StackPanel Orientation="Horizontal"
                                             VerticalAlignment="Center">
                                     <TextBlock Text="&#xE8B7;"
-                                               FontFamily="Segoe MDL2 Assets"
+                                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                FontSize="14"
                                                Foreground="{DynamicResource AccentBrush}"
                                                VerticalAlignment="Center"
@@ -1290,7 +1288,7 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="&#xE714;"
-                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                    FontSize="16"
                                                    Foreground="{DynamicResource AccentBrush}"
                                                    VerticalAlignment="Center"
@@ -1878,6 +1876,108 @@
                                        TextWrapping="Wrap"
                                        Margin="0,0,0,14" />
 
+                            <CheckBox x:Name="SettingsMinimizeToTrayCheckBox"
+                                      Content="{loc:Loc UI_MinimizeToTray}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      Margin="0,0,0,6"
+                                      Checked="SettingsMinimizeToTrayCheckBox_Changed"
+                                      Unchecked="SettingsMinimizeToTrayCheckBox_Changed" />
+                            <TextBlock x:Name="SettingsMinimizeToTrayHint"
+                                       Text="{loc:Loc UI_MinimizeToTrayHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,14" />
+
+                            <CheckBox x:Name="SettingsRunAtStartupCheckBox"
+                                      Content="{loc:Loc UI_RunAtStartup}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      Margin="0,0,0,6"
+                                      Checked="SettingsRunAtStartupCheckBox_Changed"
+                                      Unchecked="SettingsRunAtStartupCheckBox_Changed" />
+                            <TextBlock x:Name="SettingsRunAtStartupHint"
+                                       Text="{loc:Loc UI_RunAtStartupHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,14" />
+
+                            <CheckBox x:Name="SettingsJellyDragCheckBox"
+                                      Content="{loc:Loc UI_JellyDrag}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      Margin="0,0,0,6"
+                                      Checked="SettingsJellyDragCheckBox_Changed"
+                                      Unchecked="SettingsJellyDragCheckBox_Changed" />
+                            <TextBlock x:Name="SettingsJellyDragHint"
+                                       Text="{loc:Loc UI_JellyDragHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8" />
+
+                            <StackPanel x:Name="SettingsJellyIntensityPanel" Margin="0,0,0,14">
+                                <TextBlock x:Name="SettingsJellyIntensityLabel"
+                                           Text="{loc:Loc UI_JellyIntensity}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           Margin="0,0,0,6" />
+                                <Border Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                        BorderBrush="{DynamicResource BorderBrushDark}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12,10"
+                                        SnapsToDevicePixels="True">
+                                    <StackPanel Background="Transparent">
+                                        <Grid Margin="0,0,0,10">
+                                            <TextBlock x:Name="SettingsJellyIntensityLiveLabel"
+                                                       Text="{loc:Loc UI_JellyIntensityLive}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center" />
+                                            <Border HorizontalAlignment="Right"
+                                                    Background="{DynamicResource SelectionFillBrush}"
+                                                    BorderBrush="{DynamicResource SelectionBorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Padding="8,3"
+                                                    SnapsToDevicePixels="True">
+                                                <TextBlock x:Name="SettingsJellyIntensityValueText"
+                                                           Text="100%"
+                                                           Foreground="{DynamicResource SelectionForegroundBrush}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold" />
+                                            </Border>
+                                        </Grid>
+                                        <Slider x:Name="SettingsJellyIntensitySlider"
+                                                Style="{StaticResource ExplorerSliderStyle}"
+                                                Minimum="0.25"
+                                                Maximum="2.5"
+                                                Value="1"
+                                                SmallChange="0.01"
+                                                LargeChange="0.1"
+                                                ValueChanged="SettingsJellyIntensitySlider_ValueChanged"
+                                                PreviewMouseWheel="SettingsJellyIntensitySlider_PreviewMouseWheel" />
+                                        <Grid Margin="0,8,0,0">
+                                            <TextBlock x:Name="SettingsJellyIntensityLowText"
+                                                       Text="{loc:Loc UI_JellyIntensityLow}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       HorizontalAlignment="Left" />
+                                            <TextBlock x:Name="SettingsJellyIntensityDefaultText"
+                                                       Text="{loc:Loc UI_JellyIntensityDefault}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       HorizontalAlignment="Center" />
+                                            <TextBlock x:Name="SettingsJellyIntensityHighText"
+                                                       Text="{loc:Loc UI_JellyIntensityHigh}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       HorizontalAlignment="Right" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
                             <TextBlock x:Name="SettingsLanguageLabel"
                                        Text="{loc:Loc UI_Language}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
@@ -1889,52 +1989,6 @@
                                       Foreground="{DynamicResource TextPrimaryBrush}"
                                       DisplayMemberPath="DisplayName"
                                       SelectionChanged="SettingsLanguageComboBox_SelectionChanged" />
-
-                            <TextBlock x:Name="SettingsThemeLabel"
-                                       Text="{loc:Loc UI_Theme}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="12"
-                                       Margin="0,0,0,6" />
-                            <ComboBox x:Name="SettingsThemeComboBox"
-                                      Margin="0,0,0,6"
-                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
-                                      Foreground="{DynamicResource TextPrimaryBrush}"
-                                      SelectionChanged="SettingsThemeComboBox_SelectionChanged" />
-                            <TextBlock x:Name="SettingsThemeDetailsText"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="10"
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,8" />
-                            <StackPanel x:Name="SettingsCustomThemePanel"
-                                        Margin="0,0,0,14"
-                                        Visibility="Collapsed">
-                                <TextBox x:Name="SettingsCustomThemePathBox"
-                                         Style="{StaticResource AddressBarTextBoxStyle}"
-                                         IsReadOnly="True"
-                                         Margin="0,0,0,8" />
-                                <WrapPanel Margin="0,0,0,8">
-                                    <Button x:Name="SettingsBrowseThemeButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsBrowseThemeButton_Click" />
-                                    <Button x:Name="SettingsClearThemeButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsClearThemeButton_Click" />
-                                    <Button x:Name="SettingsExportThemeButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsExportThemeButton_Click" />
-                                    <Button x:Name="SettingsSyncThemesButton"
-                                            Style="{StaticResource DialogActionButtonStyle}"
-                                            Margin="0,0,8,8"
-                                            Click="SettingsSyncThemesButton_Click" />
-                                </WrapPanel>
-                                <TextBlock x:Name="SettingsCustomThemeHint"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           FontSize="10"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
 
                             <TextBlock x:Name="SettingsAiProviderLabel"
                                        Text="{loc:Loc UI_AiProvider}"
@@ -2010,6 +2064,52 @@
 
                             <StackPanel x:Name="SettingsCustomizationPanel"
                                         Visibility="Collapsed">
+                            <TextBlock x:Name="SettingsThemeLabel"
+                                       Text="{loc:Loc UI_Theme}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,0,0,6" />
+                            <ComboBox x:Name="SettingsThemeComboBox"
+                                      Margin="0,0,0,6"
+                                      Background="{DynamicResource OpaqueInputBackgroundBrush}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      SelectionChanged="SettingsThemeComboBox_SelectionChanged" />
+                            <TextBlock x:Name="SettingsThemeDetailsText"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8" />
+                            <StackPanel x:Name="SettingsCustomThemePanel"
+                                        Margin="0,0,0,14"
+                                        Visibility="Collapsed">
+                                <TextBox x:Name="SettingsCustomThemePathBox"
+                                         Style="{StaticResource AddressBarTextBoxStyle}"
+                                         IsReadOnly="True"
+                                         Margin="0,0,0,8" />
+                                <WrapPanel Margin="0,0,0,8">
+                                    <Button x:Name="SettingsBrowseThemeButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsBrowseThemeButton_Click" />
+                                    <Button x:Name="SettingsClearThemeButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsClearThemeButton_Click" />
+                                    <Button x:Name="SettingsExportThemeButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsExportThemeButton_Click" />
+                                    <Button x:Name="SettingsSyncThemesButton"
+                                            Style="{StaticResource DialogActionButtonStyle}"
+                                            Margin="0,0,8,8"
+                                            Click="SettingsSyncThemesButton_Click" />
+                                </WrapPanel>
+                                <TextBlock x:Name="SettingsCustomThemeHint"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
                             <TextBlock x:Name="SettingsCustomFontLabel"
                                        Text="{loc:Loc UI_Font}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
@@ -2588,7 +2688,7 @@
                                         Click="CommitHistoryDeleteCommitButton_Click">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="&#xE74D;"
-                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                    FontSize="11"
                                                    Margin="0,0,6,0"
                                                    VerticalAlignment="Center" />
@@ -2682,7 +2782,7 @@
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE8F1;"
-                                           FontFamily="Segoe MDL2 Assets"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                            FontSize="16"
                                            Foreground="{DynamicResource AccentBrush}"
                                            VerticalAlignment="Center"
@@ -2750,7 +2850,7 @@
                             <StackPanel Orientation="Horizontal"
                                         Margin="0,0,0,10">
                                 <TextBlock Text="&#xE74D;"
-                                           FontFamily="Segoe MDL2 Assets"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                            FontSize="16"
                                            Foreground="#FFFF6B6B"
                                            VerticalAlignment="Center"
@@ -2830,4 +2930,5 @@
             </Border>
         </Grid>
     </Border>
+    </Grid>
 </Window>

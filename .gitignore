@@ -48,6 +48,7 @@ installer/*.exe
 wingetcreate/
 winget-generated/
 artifacts/
+provix-portable/
 TestResults/
 [Bb]uild/
 *.pdb
@@ -176,6 +177,19 @@ pip-delete-this-directory.txt
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# -----------------------------------------------------------------------------
+# Android (provix-android/)
+# -----------------------------------------------------------------------------
+provix-android/.gradle/
+provix-android/**/build/
+provix-android/local.properties
+provix-android/.idea/
+provix-android/*.iml
+provix-android/captures/
+provix-android/.cxx/
+provix-android/**/*.apk
+provix-android/**/*.aab
 
 # -----------------------------------------------------------------------------
 # Misc local tooling

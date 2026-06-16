@@ -37,6 +37,10 @@ public partial class MainWindow : Window
     private readonly FileMoveService _fileMoveService = new();
     private readonly AiService _aiService = new();
     private readonly AiCommandExecutor _aiCommandExecutor = new();
+    private const double JellySafeInset = 72;
+    private const double JellySafeTotal = JellySafeInset * 2;
+
+    private readonly WindowJellyDragEffect _jellyDrag;
     private readonly ObservableCollection<DirectoryTreeNode> _driveNodes = [];
     private readonly List<DirectoryPaneState> _panes = [];
 
@@ -94,6 +98,9 @@ public partial class MainWindow : Window
         _bookmarkService = new BookmarkService(_iconService);
         _suppressSettingsUiChange = true;
         InitializeComponent();
+        _jellyDrag = new WindowJellyDragEffect(WindowShell, JellyContentHost);
+        ApplyJellyLayout();
+        SyncJellyFromSettings();
         InitializeExplorerFeatures();
         TerminalSplitter.DragCompleted += TerminalSplitter_DragCompleted;
         Loaded += MainWindow_Loaded;
@@ -105,8 +112,11 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        _jellyDrag.Reset();
         _terminalAnimationInProgress = false;
         DisposeDriveChangeNotifications();
+        DisposeWindowResize();
+        DisposeTrayIcon();
         PersistSessionSettings();
         FinishHideTerminal(animate: false, waitForProcessStop: true);
     }
@@ -133,8 +143,9 @@ public partial class MainWindow : Window
         }
         else
         {
-            windowWidth = Width;
-            windowHeight = Height;
+            var jellyOn = SettingsManager.Instance.Current.JellyDragEnabled;
+            windowWidth = ToStoredWindowSize(Width, jellyOn);
+            windowHeight = ToStoredWindowSize(Height, jellyOn);
         }
 
         SettingsManager.Instance.PersistSession(
@@ -213,6 +224,8 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        RestoreWindowLayout();
+
         SettingsManager.Instance.SettingChanged += OnSettingChanged;
         LocalizationManager.Instance.PropertyChanged += (_, _) => ApplyLocalizedStrings();
         SizeChanged += MainWindow_MediaViewerSizeChanged;
@@ -222,33 +235,35 @@ public partial class MainWindow : Window
         _suppressSettingsUiChange = true;
         PopulateSettingsControls();
         _suppressSettingsUiChange = false;
-        RestoreWindowFromSettings();
         ApplyFileIconSettings();
         ApplyCustomFont();
         LoadDriveTree();
         InitializeDriveChangeNotifications();
+        InitializeWindowResize();
         ApplyExternalToolAvailability();
+        InitializeSystemIntegration();
     }
 
-    private void RestoreWindowFromSettings()
+    private void RestoreWindowLayout()
     {
         var settings = SettingsManager.Instance.Current;
+        ApplyJellyLayout();
 
-        Dispatcher.BeginInvoke(() =>
+        if (settings.WindowState == (int)WindowState.Maximized)
         {
-            if (settings.WindowState == (int)WindowState.Maximized)
-            {
-                WindowState = WindowState.Maximized;
-                return;
-            }
+            WindowState = WindowState.Maximized;
+        }
+        else if (settings.WindowWidth >= MinWidth && settings.WindowHeight >= MinHeight)
+        {
+            var jellyOn = settings.JellyDragEnabled;
+            Width = FromStoredWindowWidth(settings.WindowWidth, jellyOn);
+            Height = FromStoredWindowHeight(settings.WindowHeight, jellyOn);
+        }
 
-            if (settings.WindowWidth >= MinWidth && settings.WindowHeight >= MinHeight)
-            {
-                Width = settings.WindowWidth;
-                Height = settings.WindowHeight;
-            }
-        }, System.Windows.Threading.DispatcherPriority.Loaded);
+        _jellyDrag.Reset();
     }
+
+    private void RestoreWindowFromSettings() => RestoreWindowLayout();
 
     private void RestoreTerminalFromSettings()
     {
@@ -263,11 +278,19 @@ public partial class MainWindow : Window
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
+        _jellyDrag.Reset();
+
         var loc = LocalizationManager.Instance;
         MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
         MaximizeButton.ToolTip = WindowState == WindowState.Maximized
             ? loc["UI_Restore"]
             : loc["UI_Maximize"];
+
+        if (WindowState == WindowState.Minimized &&
+            SettingsManager.Instance.Current.MinimizeToTray)
+        {
+            HideToTray();
+        }
     }
 
     private void LoadDriveTree()
@@ -2898,12 +2921,12 @@ public partial class MainWindow : Window
         {
             case NamePromptMode.NewFolder:
                 NamePromptTitleText.Text = loc["UI_NewFolder"];
-                NamePromptTextBox.Text = "New Folder";
+                NamePromptTextBox.Text = loc["UI_NewFolder"];
                 NamePromptCreateButton.Content = loc["UI_Create"];
                 break;
             case NamePromptMode.NewTextFile:
                 NamePromptTitleText.Text = loc["UI_NewTextFile"];
-                NamePromptTextBox.Text = "New Text Document.txt";
+                NamePromptTextBox.Text = loc["UI_NewTextFileDefaultName"];
                 NamePromptCreateButton.Content = loc["UI_Create"];
                 break;
             case NamePromptMode.GitCommit:
@@ -3824,8 +3847,26 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.ButtonState == MouseButtonState.Pressed)
+        var jellyOn = SettingsManager.Instance.Current.JellyDragEnabled;
+        if (jellyOn)
+        {
+            SyncJellyFromSettings();
+            _jellyDrag.Begin(this);
+        }
+
+        try
+        {
             DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // Mouse released before DragMove could capture it.
+        }
+        finally
+        {
+            if (jellyOn)
+                _jellyDrag.End();
+        }
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
@@ -3886,8 +3927,48 @@ public partial class MainWindow : Window
                 ApplyExternalToolAvailability();
                 UpdateAiSettingsPanelVisibility();
                 break;
+            case nameof(AppSettings.JellyDragEnabled):
+                ApplyJellyLayout(adjustWindowSize: true);
+                _jellyDrag.Reset();
+                if (SettingsOverlay.Visibility == Visibility.Visible)
+                    UpdateJellyIntensityPanelState();
+                break;
+            case nameof(AppSettings.JellyIntensity):
+                SyncJellyFromSettings();
+                break;
         }
     }
+
+    private void SyncJellyFromSettings()
+    {
+        _jellyDrag.Intensity = SettingsManager.Instance.Current.JellyIntensity;
+    }
+
+    /// <summary>
+    /// Jelly needs an outer safe zone so transforms and shadow are not clipped.
+    /// When jelly is off, the margin is removed and the window shrinks to match visible chrome.
+    /// </summary>
+    private void ApplyJellyLayout(bool adjustWindowSize = false)
+    {
+        var enabled = SettingsManager.Instance.Current.JellyDragEnabled;
+        WindowShell.Margin = new Thickness(enabled ? JellySafeInset : 0);
+
+        if (!adjustWindowSize || WindowState != WindowState.Normal)
+            return;
+
+        var delta = enabled ? JellySafeTotal : -JellySafeTotal;
+        Width = Math.Max(MinWidth, Width + delta);
+        Height = Math.Max(MinHeight, Height + delta);
+    }
+
+    private static double ToStoredWindowSize(double actual, bool jellyEnabled) =>
+        jellyEnabled ? actual : actual + JellySafeTotal;
+
+    private double FromStoredWindowWidth(double stored, bool jellyEnabled) =>
+        jellyEnabled ? stored : Math.Max(stored - JellySafeTotal, MinWidth);
+
+    private double FromStoredWindowHeight(double stored, bool jellyEnabled) =>
+        jellyEnabled ? stored : Math.Max(stored - JellySafeTotal, MinHeight);
 
     private void ApplyCustomFont()
     {
@@ -3929,6 +4010,19 @@ public partial class MainWindow : Window
         SettingsThemeLabel.Text = loc["UI_Theme"];
         SettingsUseBuiltInMediaViewerCheckBox.Content = loc["UI_UseBuiltInMediaViewer"];
         SettingsUseBuiltInMediaViewerHint.Text = loc["UI_UseBuiltInMediaViewerHint"];
+        SettingsMinimizeToTrayCheckBox.Content = loc["UI_MinimizeToTray"];
+        SettingsMinimizeToTrayHint.Text = loc["UI_MinimizeToTrayHint"];
+        SettingsRunAtStartupCheckBox.Content = loc["UI_RunAtStartup"];
+        SettingsRunAtStartupHint.Text = loc["UI_RunAtStartupHint"];
+        SettingsJellyDragCheckBox.Content = loc["UI_JellyDrag"];
+        SettingsJellyDragHint.Text = loc["UI_JellyDragHint"];
+        SettingsJellyIntensityLabel.Text = loc["UI_JellyIntensity"];
+        SettingsJellyIntensityLiveLabel.Text = loc["UI_JellyIntensityLive"];
+        SettingsJellyIntensityLowText.Text = loc["UI_JellyIntensityLow"];
+        SettingsJellyIntensityDefaultText.Text = loc["UI_JellyIntensityDefault"];
+        SettingsJellyIntensityHighText.Text = loc["UI_JellyIntensityHigh"];
+        UpdateJellyIntensityValueText(SettingsJellyIntensitySlider.Value);
+        RefreshTrayLocalization();
         SettingsCustomFontLabel.Text = loc["UI_Font"];
         SettingsCustomFontHint.Text = loc["UI_CustomFontHint"];
         SettingsBrowseFontButton.Content = loc["UI_BrowseFont"];
@@ -4043,6 +4137,22 @@ public partial class MainWindow : Window
 
             SettingsUseBuiltInMediaViewerCheckBox.IsChecked =
                 SettingsManager.Instance.Current.UseBuiltInMediaViewer;
+
+            SettingsMinimizeToTrayCheckBox.IsChecked =
+                SettingsManager.Instance.Current.MinimizeToTray;
+
+            SettingsRunAtStartupCheckBox.IsChecked =
+                SettingsManager.Instance.Current.RunAtStartup;
+
+            SettingsJellyDragCheckBox.IsChecked =
+                SettingsManager.Instance.Current.JellyDragEnabled;
+
+            SettingsJellyIntensitySlider.Value = Math.Clamp(
+                SettingsManager.Instance.Current.JellyIntensity,
+                SettingsManager.MinJellyIntensity,
+                SettingsManager.MaxJellyIntensity);
+            UpdateJellyIntensityValueText(SettingsJellyIntensitySlider.Value);
+            UpdateJellyIntensityPanelState();
 
             PopulateAiProviderComboBox(loc);
             SelectAiProviderComboBoxItem(SettingsManager.Instance.Current.AiProvider);
@@ -4179,6 +4289,7 @@ public partial class MainWindow : Window
             return;
 
         CommitScrollSensitivitySetting();
+        CommitJellyIntensitySetting();
 
         void FinishHide()
         {
@@ -4787,6 +4898,89 @@ public partial class MainWindow : Window
 
         if (!enabled)
             CloseMediaViewer();
+    }
+
+    private void SettingsMinimizeToTrayCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        var enabled = SettingsMinimizeToTrayCheckBox.IsChecked == true;
+        SettingsManager.Instance.UpdateMinimizeToTray(enabled);
+        ApplyTrayPreference(enabled);
+    }
+
+    private void SettingsRunAtStartupCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        var enabled = SettingsRunAtStartupCheckBox.IsChecked == true;
+        if (!StartupManager.SetEnabled(enabled))
+        {
+            // Roll back the checkbox if the registry update failed.
+            _suppressSettingsUiChange = true;
+            SettingsRunAtStartupCheckBox.IsChecked = StartupManager.IsEnabled();
+            _suppressSettingsUiChange = false;
+            return;
+        }
+
+        SettingsManager.Instance.UpdateRunAtStartup(enabled);
+    }
+
+    private void SettingsJellyDragCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        var enabled = SettingsJellyDragCheckBox.IsChecked == true;
+        SettingsManager.Instance.UpdateJellyDragEnabled(enabled);
+        UpdateJellyIntensityPanelState();
+    }
+
+    private void SettingsJellyIntensitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateJellyIntensityValueText(e.NewValue);
+
+        if (_suppressSettingsUiChange || !IsLoaded)
+            return;
+
+        SettingsManager.Instance.UpdateJellyIntensity(e.NewValue);
+    }
+
+    private void SettingsJellyIntensitySlider_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not Slider slider)
+            return;
+
+        e.Handled = true;
+        var delta = e.Delta > 0 ? slider.SmallChange : -slider.SmallChange;
+        slider.Value = Math.Clamp(slider.Value + delta, slider.Minimum, slider.Maximum);
+    }
+
+    private void CommitJellyIntensitySetting()
+    {
+        SettingsManager.Instance.UpdateJellyIntensity(SettingsJellyIntensitySlider.Value);
+    }
+
+    private void UpdateJellyIntensityValueText(double intensity)
+    {
+        intensity = Math.Clamp(
+            intensity,
+            SettingsManager.MinJellyIntensity,
+            SettingsManager.MaxJellyIntensity);
+
+        var percent = intensity * 100.0;
+        SettingsJellyIntensityValueText.Text = Math.Abs(percent - 100.0) < 0.05
+            ? "100%"
+            : $"{percent:0.#}%";
+    }
+
+    private void UpdateJellyIntensityPanelState()
+    {
+        var enabled = SettingsJellyDragCheckBox.IsChecked == true;
+        SettingsJellyIntensityPanel.IsEnabled = enabled;
+        SettingsJellyIntensityPanel.Opacity = enabled ? 1.0 : 0.45;
     }
 
     private void SettingsLanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
