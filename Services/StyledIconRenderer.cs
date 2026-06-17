@@ -9,16 +9,32 @@ internal static class StyledIconRenderer
     private const int IconSize = 16;
 
     public static ImageSource CreateFlatFolderIcon() =>
-        CreateFlatIcon("#F4B400", string.Empty, isFolder: true);
+        OnUiThread(() => CreateFlatIcon("#F4B400", string.Empty, isFolder: true));
 
     public static ImageSource CreateFlatFileIcon(string? extension) =>
-        CreateFlatIcon(ResolveFlatColor(extension), FormatExtensionLabel(extension), isFolder: false);
+        OnUiThread(() => CreateFlatIcon(ResolveFlatColor(extension), FormatExtensionLabel(extension), isFolder: false));
 
     public static ImageSource CreateMinimalFolderIcon() =>
-        CreateMinimalIcon(string.Empty, isFolder: true);
+        OnUiThread(() => CreateMinimalIcon(string.Empty, isFolder: true));
 
     public static ImageSource CreateMinimalFileIcon(string? extension) =>
-        CreateMinimalIcon(FormatExtensionLabel(extension), isFolder: false);
+        OnUiThread(() => CreateMinimalIcon(FormatExtensionLabel(extension), isFolder: false));
+
+    /// <summary>
+    /// Runs WPF visual rendering on the UI thread. DrawingVisual, FormattedText and
+    /// RenderTargetBitmap all carry Dispatcher (thread) affinity, so when directory listings
+    /// build icons on a background thread these must be marshaled onto the UI thread to avoid the
+    /// "calling thread cannot access this object because a different thread owns it" exception.
+    /// The produced bitmap is frozen, so it is safe to use from any thread afterwards.
+    /// </summary>
+    private static ImageSource OnUiThread(Func<ImageSource> create)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            return create();
+
+        return dispatcher.Invoke(create);
+    }
 
     private static ImageSource CreateFlatIcon(string colorHex, string label, bool isFolder)
     {

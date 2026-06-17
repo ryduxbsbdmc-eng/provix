@@ -1,0 +1,27 @@
+{
+  "name": "Midnight Folders",
+  "version": "2.0.0",
+  "description": "Glossy macOS Big Sur-style icons: glassy volumetric folders, sheened documents and drives on transparent backgrounds, with tasteful per-extension accent labels.",
+  "author": "Provix",
+  "updatedAt": "2026-06-17",
+  "folder": "folder.png",
+  "file": "file.png",
+  "drive": "drive.png",
+  "extensions": {
+    ".txt": "txt.png",
+    ".md": "md.png",
+    ".pdf": "pdf.png",
+    ".zip": "zip.png",
+    ".7z": "7z.png",
+    ".rar": "rar.png",
+    ".cs": "cs.png",
+    ".js": "js.png",
+    ".ts": "ts.png",
+    ".json": "json.png",
+    ".html": "html.png",
+    ".css": "css.png",
+    ".png": "png.png",
+    ".jpg": "jpg.png",
+    ".exe": "exe.png"
+  }
+}

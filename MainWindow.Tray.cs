@@ -103,6 +103,23 @@ public partial class MainWindow
 
     private static System.Drawing.Icon? LoadTrayIcon()
     {
+        // Preferred: the icon embedded as a WPF resource (works identically in single-file,
+        // fast/portable and installer builds, regardless of the on-disk exe location).
+        try
+        {
+            var uri = new Uri("pack://application:,,,/icon/icon.ico", UriKind.Absolute);
+            var resource = System.Windows.Application.GetResourceStream(uri);
+            if (resource?.Stream is { } stream)
+            {
+                using (stream)
+                    return new System.Drawing.Icon(stream);
+            }
+        }
+        catch
+        {
+            // Fall back to extracting the icon embedded in the exe below.
+        }
+
         try
         {
             var exe = Process.GetCurrentProcess().MainModule?.FileName ?? Environment.ProcessPath;

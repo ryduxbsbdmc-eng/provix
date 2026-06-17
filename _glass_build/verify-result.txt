@@ -1,0 +1,19 @@
+OK  folder.png  256x256 7732B alpha=true minAlpha=0
+OK  file.png  256x256 6041B alpha=true minAlpha=0
+OK  drive.png  256x256 7278B alpha=true minAlpha=0
+OK  txt.png  256x256 7115B alpha=true minAlpha=0
+OK  md.png  256x256 7389B alpha=true minAlpha=0
+OK  pdf.png  256x256 7202B alpha=true minAlpha=0
+OK  zip.png  256x256 6991B alpha=true minAlpha=0
+OK  7z.png  256x256 6725B alpha=true minAlpha=0
+OK  rar.png  256x256 7342B alpha=true minAlpha=0
+OK  cs.png  256x256 7053B alpha=true minAlpha=0
+OK  js.png  256x256 6823B alpha=true minAlpha=0
+OK  ts.png  256x256 6858B alpha=true minAlpha=0
+OK  json.png  256x256 7369B alpha=true minAlpha=0
+OK  html.png  256x256 7227B alpha=true minAlpha=0
+OK  css.png  256x256 7320B alpha=true minAlpha=0
+OK  png.png  256x256 7478B alpha=true minAlpha=0
+OK  jpg.png  256x256 7221B alpha=true minAlpha=0
+OK  exe.png  256x256 7188B alpha=true minAlpha=0
+ALL_VALID

@@ -17,6 +17,7 @@ namespace FileExplorer;
 public partial class MainWindow : Window
 {
     private const int SearchDebounceMs = 600;
+    private const int MaxPaneCount = 8;
 
     private enum NamePromptMode
     {
@@ -58,7 +59,6 @@ public partial class MainWindow : Window
     private string? _namePromptGitTargetDirectory;
     private bool _isGitCommitInProgress;
     private bool _isGitHistoryInProgress;
-    private bool _commitHistoryRestorePending;
     private DirectoryPaneState? _commitHistoryTargetPane;
     private string? _commitHistoryTargetDirectory;
     private bool _isEditorOpen;
@@ -383,9 +383,15 @@ public partial class MainWindow : Window
 
     private void AddPaneButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_panes.Count >= MaxPaneCount)
+        {
+            StatusText.Text = LocalizationManager.Instance["UI_MaxPanesReached"];
+            return;
+        }
+
         var initialPath = ActivePane.CurrentPath;
         var pane = CreatePane();
-        RebuildPaneHost(entrancePane: pane.Control);
+        AppendPaneToHost(pane.Control);
 
         if (!string.IsNullOrEmpty(initialPath))
             NavigateToDirectory(pane, initialPath, syncTree: false, recordHistory: false);
@@ -399,7 +405,7 @@ public partial class MainWindow : Window
             return;
 
         var wrapper = DirectoryPaneHost.GetPaneWrapper(pane.Control);
-        if (wrapper is null)
+        if (wrapper is null || !SettingsManager.Instance.Current.EnableCloseAnimations)
         {
             FinishRemovePane(pane);
             return;
@@ -439,6 +445,12 @@ public partial class MainWindow : Window
 
         RebuildPaneHost();
         UpdatePaneCloseButtonsVisibility();
+    }
+
+    private void AppendPaneToHost(DirectoryPaneControl entrancePane)
+    {
+        var wrapper = DirectoryPaneHost.AppendPaneColumn(entrancePane, prepareEntrance: true);
+        UiAnimationHelper.AnimatePaneEntrance(wrapper);
     }
 
     private void RebuildPaneHost(DirectoryPaneControl? entrancePane = null)
@@ -496,6 +508,38 @@ public partial class MainWindow : Window
             PowerShellTerminal.SyncWorkingDirectory(pane.CurrentPath);
 
         OnPaneFileListSelectionChanged(pane);
+
+        if (pane.NeedsMetadataRefresh)
+            TriggerDeferredMetadataRefreshAsync(pane);
+    }
+
+    private async void TriggerDeferredMetadataRefreshAsync(DirectoryPaneState pane)
+    {
+        if (pane.CurrentContents is null || string.IsNullOrEmpty(pane.CurrentPath))
+            return;
+
+        pane.NeedsMetadataRefresh = false;
+        CancelListingRefresh(pane);
+        pane.ListingRefreshCancellation = new CancellationTokenSource();
+        var cancellationToken = pane.ListingRefreshCancellation.Token;
+        pane.ListingRefreshVersion++;
+        var refreshVersion = pane.ListingRefreshVersion;
+
+        var contents = pane.CurrentContents;
+        var path = pane.CurrentPath;
+
+        StatusText.Text = $"{contents.Count} item(s)";
+
+        try
+        {
+            var gitTask = ApplyGitMetadataAsync(pane, contents, refreshVersion, cancellationToken);
+            var sizesTask = PopulateDirectorySizesAsync(pane, path, contents, refreshVersion, cancellationToken);
+            await Task.WhenAll(gitTask, sizesTask);
+        }
+        catch (OperationCanceledException)
+        {
+            // Pane navigated away or deactivated before metadata completed.
+        }
     }
 
     private async void PanePathSearchBox_TextChanged(DirectoryPaneState pane, TextChangedEventArgs e)
@@ -1039,6 +1083,7 @@ public partial class MainWindow : Window
         }
 
         pane.Control.FileListView.ItemsSource = contents;
+        pane.CurrentContents = contents;
 
         if (pane == _activePane)
         {
@@ -1047,15 +1092,17 @@ public partial class MainWindow : Window
             pane.LastListingShownUtc = DateTime.UtcNow;
             if (shouldAnimate)
                 pane.Control.PlayListRefreshAnimation();
+
+            pane.NeedsMetadataRefresh = false;
+            var gitTask = ApplyGitMetadataAsync(pane, contents, refreshVersion, cancellationToken);
+            var sizesTask = PopulateDirectorySizesAsync(pane, path, contents, refreshVersion, cancellationToken);
+            await Task.WhenAll(gitTask, sizesTask);
         }
         else
         {
             pane.LastListingShownUtc = DateTime.UtcNow;
+            pane.NeedsMetadataRefresh = true;
         }
-
-        var gitTask = ApplyGitMetadataAsync(pane, contents, refreshVersion, cancellationToken);
-        var sizesTask = PopulateDirectorySizesAsync(pane, path, contents, refreshVersion, cancellationToken);
-        await Task.WhenAll(gitTask, sizesTask);
     }
 
     private static void CancelListingRefresh(DirectoryPaneState pane)
@@ -2848,6 +2895,30 @@ public partial class MainWindow : Window
     private void DeleteConfirmCancelButton_Click(object sender, RoutedEventArgs e) =>
         HideDeleteConfirmation();
 
+    private void ShowGitError(string title, string message)
+    {
+        GitErrorTitleText.Text = title;
+        GitErrorMessageText.Text = message;
+        PushChromeDimOverlay();
+        GitErrorOverlay.Visibility = Visibility.Visible;
+        UiAnimationHelper.ShowOverlay(GitErrorPanel);
+    }
+
+    private void HideGitError()
+    {
+        if (GitErrorOverlay.Visibility != Visibility.Visible)
+            return;
+
+        UiAnimationHelper.HideOverlay(GitErrorPanel, () =>
+        {
+            GitErrorOverlay.Visibility = Visibility.Collapsed;
+            PopChromeDimOverlay();
+        });
+    }
+
+    private void GitErrorCloseButton_Click(object sender, RoutedEventArgs e) =>
+        HideGitError();
+
     private void DeleteConfirmDeleteButton_Click(object sender, RoutedEventArgs e)
     {
         if (_pendingDeleteEntries.Count == 0 || _deleteTargetPane is null)
@@ -3286,7 +3357,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             StatusText.Text = ex.Message;
-            MessageBox.Show(ex.ToString(), loc["UI_GitCommitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowGitError(loc["UI_GitCommitErrorTitle"], ex.ToString());
         }
         finally
         {
@@ -3314,7 +3385,7 @@ public partial class MainWindow : Window
 
         if (!result.Success)
         {
-            MessageBox.Show(result.Message, loc["UI_GitCommitErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGitError(loc["UI_GitCommitErrorTitle"], result.Message);
             return;
         }
 
@@ -3366,32 +3437,48 @@ public partial class MainWindow : Window
 
         _commitHistoryTargetPane = pane;
         _commitHistoryTargetDirectory = repositoryRoot;
-        CommitHistoryListBox.ItemsSource = null;
-        ResetCommitHistoryActionState();
-        HideCommitHistoryError();
 
         _isGitHistoryInProgress = true;
         StatusText.Text = loc["UI_GitLoadingHistory"];
 
         try
         {
-            var historyResult = await GitService.GetCommitHistoryAsync(repositoryRoot);
+            var historyResult = await GitService.GetCommitHistoryAsync(repositoryRoot).ConfigureAwait(true);
             if (!historyResult.Success)
             {
                 StatusText.Text = historyResult.Message;
                 return;
             }
 
-            await BindCommitHistoryListAsync(historyResult.Commits);
+            CommitHistoryListBox.ItemsSource = null;
+            ResetCommitHistoryActionState();
+            HideCommitHistoryError();
+            BindCommitHistoryList(historyResult.Commits);
+
+            if (historyResult.Commits.Count == 0)
+                ShowCommitHistoryError(loc["UI_GitNoCommitsYet"]);
+
             PushChromeDimOverlay();
             CommitHistoryOverlay.Visibility = Visibility.Visible;
             UiAnimationHelper.ShowOverlay(CommitHistoryPanel);
             StatusText.Text = loc["UI_Ready"];
         }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
+            ShowCommitHistoryError(ex.Message);
+        }
         finally
         {
             _isGitHistoryInProgress = false;
         }
+    }
+
+    private void BindCommitHistoryList(IReadOnlyList<GitCommit> commits)
+    {
+        CommitHistoryListBox.ItemsSource = commits;
+        CommitHistoryListBox.SelectedIndex = commits.Count > 0 ? 0 : -1;
+        ResetCommitHistoryActionState();
     }
 
     private void HideCommitHistoryOverlay(bool animate = true)
@@ -3424,11 +3511,6 @@ public partial class MainWindow : Window
 
     private void ResetCommitHistoryActionState()
     {
-        _commitHistoryRestorePending = false;
-        CommitHistoryWarningText.Visibility = Visibility.Collapsed;
-        CommitHistoryRestoreButton.Visibility = Visibility.Visible;
-        CommitHistoryConfirmRestoreButton.Visibility = Visibility.Collapsed;
-
         var hasSelection = CommitHistoryListBox.SelectedItem is GitCommit;
         CommitHistoryRestoreButton.IsEnabled = hasSelection;
         CommitHistoryDeleteCommitButton.IsEnabled = hasSelection;
@@ -3436,10 +3518,7 @@ public partial class MainWindow : Window
 
     private async Task BindCommitHistoryListAsync(IReadOnlyList<GitCommit> commits)
     {
-        CommitHistoryListBox.ItemsSource = commits;
-        CommitHistoryListBox.SelectedIndex = commits.Count > 0 ? 0 : -1;
-        ResetCommitHistoryActionState();
-        await Task.CompletedTask;
+        await Dispatcher.InvokeAsync(() => BindCommitHistoryList(commits));
     }
 
     private async Task RefreshCommitHistoryListAsync()
@@ -3453,15 +3532,25 @@ public partial class MainWindow : Window
 
         CommitHistoryListBox.ItemsSource = null;
 
-        var historyResult = await GitService.GetCommitHistoryAsync(targetDirectory);
-        if (!historyResult.Success)
+        try
         {
-            ShowCommitHistoryError(historyResult.Message);
-            StatusText.Text = historyResult.Message;
-            return;
-        }
+            var historyResult = await GitService.GetCommitHistoryAsync(targetDirectory).ConfigureAwait(true);
+            if (!historyResult.Success)
+            {
+                ShowCommitHistoryError(historyResult.Message);
+                return;
+            }
 
-        await BindCommitHistoryListAsync(historyResult.Commits);
+            await BindCommitHistoryListAsync(historyResult.Commits);
+
+            if (historyResult.Commits.Count == 0)
+                ShowCommitHistoryError(LocalizationManager.Instance["UI_GitNoCommitsYet"]);
+        }
+        catch (Exception ex)
+        {
+            ShowCommitHistoryError(ex.Message);
+            StatusText.Text = ex.Message;
+        }
     }
 
     private void ShowCommitDeleteConfirmOverlay()
@@ -3485,7 +3574,6 @@ public partial class MainWindow : Window
         CommitHistoryCancelButton.IsEnabled = isEnabled;
         CommitHistoryDeleteCommitButton.IsEnabled = isEnabled && CommitHistoryListBox.SelectedItem is GitCommit;
         CommitHistoryRestoreButton.IsEnabled = isEnabled && CommitHistoryListBox.SelectedItem is GitCommit;
-        CommitHistoryConfirmRestoreButton.IsEnabled = isEnabled;
     }
 
     private void ShowCommitHistoryError(string message)
@@ -3502,9 +3590,6 @@ public partial class MainWindow : Window
 
     private void CommitHistoryListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_commitHistoryRestorePending)
-            return;
-
         var hasSelection = CommitHistoryListBox.SelectedItem is GitCommit;
         CommitHistoryRestoreButton.IsEnabled = hasSelection;
         CommitHistoryDeleteCommitButton.IsEnabled = hasSelection;
@@ -3551,8 +3636,8 @@ public partial class MainWindow : Window
 
         try
         {
-            var result = await Task.Run(async () =>
-                await GitService.DeleteCommitAsync(targetDirectory, selectedCommit.Hash));
+            var result = await GitService.DeleteCommitAsync(targetDirectory, selectedCommit.Hash)
+                .ConfigureAwait(true);
 
             if (result.Success)
             {
@@ -3582,20 +3667,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CommitHistoryRestoreButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (CommitHistoryListBox.SelectedItem is not GitCommit)
-            return;
-
-        _commitHistoryRestorePending = true;
-        CommitHistoryWarningText.Visibility = Visibility.Visible;
-        CommitHistoryRestoreButton.Visibility = Visibility.Collapsed;
-        CommitHistoryConfirmRestoreButton.Visibility = Visibility.Visible;
-        CommitHistoryDeleteCommitButton.IsEnabled = false;
-        HideCommitHistoryError();
-    }
-
-    private async void CommitHistoryConfirmRestoreButton_Click(object sender, RoutedEventArgs e)
+    private async void CommitHistoryRestoreButton_Click(object sender, RoutedEventArgs e)
     {
         if (CommitHistoryListBox.SelectedItem is not GitCommit selectedCommit ||
             _commitHistoryTargetPane is null ||
@@ -3606,44 +3678,79 @@ public partial class MainWindow : Window
 
         var loc = LocalizationManager.Instance;
         var pane = _commitHistoryTargetPane;
-        var targetDirectory = Path.GetFullPath(_commitHistoryTargetDirectory);
+        var repositoryRoot = Path.GetFullPath(_commitHistoryTargetDirectory);
         var commitHash = selectedCommit.Hash.Trim();
-
         if (string.IsNullOrWhiteSpace(commitHash))
             return;
 
-        CommitHistoryConfirmRestoreButton.IsEnabled = false;
-        CommitHistoryCancelButton.IsEnabled = false;
-        CommitHistoryDeleteCommitButton.IsEnabled = false;
+        HideCommitHistoryError();
+
+        var confirmMessage = string.Format(
+            loc["UI_GitRestoreConfirmMessage"],
+            selectedCommit.Hash,
+            selectedCommit.Message);
+
+        var confirm = MessageBox.Show(
+            confirmMessage,
+            loc["UI_GitRestoreConfirmTitle"],
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        SetCommitHistoryActionsEnabled(false);
         StatusText.Text = loc["UI_GitRestoring"];
 
         try
         {
-            var result = await GitService.RestoreToCommitAsync(targetDirectory, commitHash);
+            CloseEditor(animate: false);
+
+            var result = await GitService.RestoreToCommitAsync(repositoryRoot, commitHash)
+                .ConfigureAwait(true);
 
             if (!result.Success)
             {
                 ShowCommitHistoryError(result.Message);
                 StatusText.Text = result.Message;
-                MessageBox.Show(result.Message, loc["UI_GitRestoreErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);
-                CommitHistoryConfirmRestoreButton.IsEnabled = true;
-                CommitHistoryCancelButton.IsEnabled = true;
+                SetCommitHistoryActionsEnabled(true);
                 return;
             }
 
-            HideCommitHistoryOverlay();
-            CloseEditor();
-            StatusText.Text = result.Message;
-            NavigateToDirectory(pane, targetDirectory, syncTree: pane == _activePane, recordHistory: false);
+            HideCommitHistoryOverlay(animate: false);
+            StatusText.Text = loc["UI_GitRestoreSuccess"];
+            NavigateToDirectory(
+                pane,
+                ResolvePanePathAfterGitOperation(pane, repositoryRoot),
+                syncTree: pane == _activePane,
+                recordHistory: false);
         }
         catch (Exception ex)
         {
             ShowCommitHistoryError(ex.Message);
             StatusText.Text = ex.Message;
-            MessageBox.Show(ex.ToString(), loc["UI_GitRestoreErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
-            CommitHistoryConfirmRestoreButton.IsEnabled = true;
-            CommitHistoryCancelButton.IsEnabled = true;
+            SetCommitHistoryActionsEnabled(true);
         }
+    }
+
+    private static string ResolvePanePathAfterGitOperation(DirectoryPaneState pane, string repositoryRoot)
+    {
+        var currentPath = pane.CurrentPath;
+        if (string.IsNullOrWhiteSpace(currentPath))
+            return repositoryRoot;
+
+        try
+        {
+            currentPath = Path.GetFullPath(currentPath);
+            if (Directory.Exists(currentPath) && IsPathUnderDirectory(currentPath, repositoryRoot))
+                return currentPath;
+        }
+        catch
+        {
+            // Fall back to repository root.
+        }
+
+        return repositoryRoot;
     }
 
     private static bool TryNormalizeNewItemName(
@@ -4025,6 +4132,8 @@ public partial class MainWindow : Window
         SettingsThemeLabel.Text = loc["UI_Theme"];
         SettingsUseBuiltInMediaViewerCheckBox.Content = loc["UI_UseBuiltInMediaViewer"];
         SettingsUseBuiltInMediaViewerHint.Text = loc["UI_UseBuiltInMediaViewerHint"];
+        SettingsEnableCloseAnimationsCheckBox.Content = loc["UI_EnableCloseAnimations"];
+        SettingsEnableCloseAnimationsHint.Text = loc["UI_EnableCloseAnimationsHint"];
         SettingsMinimizeToTrayCheckBox.Content = loc["UI_MinimizeToTray"];
         SettingsMinimizeToTrayHint.Text = loc["UI_MinimizeToTrayHint"];
         SettingsRunAtStartupCheckBox.Content = loc["UI_RunAtStartup"];
@@ -4152,6 +4261,9 @@ public partial class MainWindow : Window
 
             SettingsUseBuiltInMediaViewerCheckBox.IsChecked =
                 SettingsManager.Instance.Current.UseBuiltInMediaViewer;
+
+            SettingsEnableCloseAnimationsCheckBox.IsChecked =
+                SettingsManager.Instance.Current.EnableCloseAnimations;
 
             SettingsMinimizeToTrayCheckBox.IsChecked =
                 SettingsManager.Instance.Current.MinimizeToTray;
@@ -4913,6 +5025,15 @@ public partial class MainWindow : Window
 
         if (!enabled)
             CloseMediaViewer();
+    }
+
+    private void SettingsEnableCloseAnimationsCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSettingsUiChange)
+            return;
+
+        var enabled = SettingsEnableCloseAnimationsCheckBox.IsChecked == true;
+        SettingsManager.Instance.UpdateEnableCloseAnimations(enabled);
     }
 
     private void SettingsMinimizeToTrayCheckBox_Changed(object sender, RoutedEventArgs e)

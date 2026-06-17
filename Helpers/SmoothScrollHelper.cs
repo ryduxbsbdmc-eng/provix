@@ -10,7 +10,7 @@ namespace FileExplorer.Helpers;
 public static class SmoothScrollHelper
 {
     private const double BaseWheelDivisor = 3.0;
-    private const double ScrollDurationMs = 150;
+    private const double BaseScrollDurationMs = 150.0;
 
     private static readonly List<ScrollAnimation> ActiveAnimations = [];
     private static readonly ConditionalWeakTable<DependencyObject, ScrollViewer?> ScrollViewerCache = new();
@@ -162,7 +162,7 @@ public static class SmoothScrollHelper
         }
 
         var from = horizontal ? scrollViewer.HorizontalOffset : scrollViewer.VerticalOffset;
-        ActiveAnimations.Add(new ScrollAnimation(scrollViewer, from, targetOffset, horizontal));
+        ActiveAnimations.Add(new ScrollAnimation(scrollViewer, from, targetOffset, horizontal, GetScrollDurationMs()));
         EnsureRenderHook();
     }
 
@@ -189,7 +189,7 @@ public static class SmoothScrollHelper
         for (var i = ActiveAnimations.Count - 1; i >= 0; i--)
         {
             var animation = ActiveAnimations[i];
-            var progress = Math.Min(1.0, (now - animation.StartTicks) / ScrollDurationMs);
+            var progress = Math.Min(1.0, (now - animation.StartTicks) / animation.DurationMs);
             var eased = EaseOut(progress);
             var value = animation.From + (animation.To - animation.From) * eased;
 
@@ -213,15 +213,35 @@ public static class SmoothScrollHelper
     private static double EaseOut(double progress) =>
         1.0 - Math.Pow(1.0 - progress, 2.0);
 
+    private static double GetScrollDurationMs()
+    {
+        var sensitivity = GetSensitivity();
+        // Higher sensitivity → shorter animation (snappier feel).
+        // sensitivity 0.25 → 600ms, 1.0 → 150ms, 3.0 → 50ms
+        return Math.Max(30.0, BaseScrollDurationMs / sensitivity);
+    }
+
     private static double GetWheelDivisor()
     {
+        return BaseWheelDivisor / GetSensitivity();
+    }
+
+    private static double GetSensitivity()
+    {
         var sensitivity = SettingsManager.Instance.Current.ScrollSensitivity;
-        sensitivity = Math.Clamp(
+        return Math.Clamp(
             sensitivity,
             SettingsManager.MinScrollSensitivity,
             SettingsManager.MaxScrollSensitivity);
+    }
 
-        return BaseWheelDivisor / sensitivity;
+    public static void SeekTo(ScrollViewer scrollViewer, double targetOffset, bool horizontal)
+    {
+        var current = horizontal ? scrollViewer.HorizontalOffset : scrollViewer.VerticalOffset;
+        if (Math.Abs(targetOffset - current) < 0.5)
+            return;
+
+        StartAnimation(scrollViewer, targetOffset, horizontal);
     }
 
     private static double Clamp(double value, double min, double max) =>
@@ -231,12 +251,14 @@ public static class SmoothScrollHelper
         ScrollViewer viewer,
         double from,
         double to,
-        bool isHorizontal)
+        bool isHorizontal,
+        double durationMs)
     {
         public ScrollViewer Viewer { get; } = viewer;
         public double From { get; } = from;
         public double To { get; } = to;
         public bool IsHorizontal { get; } = isHorizontal;
         public long StartTicks { get; } = Environment.TickCount64;
+        public double DurationMs { get; } = durationMs;
     }
 }

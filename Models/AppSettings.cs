@@ -38,6 +38,9 @@ public sealed class AppSettings
     /// <summary>1.0 = default jelly strength.</summary>
     public double JellyIntensity { get; set; } = 1.0;
 
+    /// <summary>Play the exit animation when a pane is closed. When off, panes close instantly.</summary>
+    public bool EnableCloseAnimations { get; set; } = true;
+
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AiProvider AiProvider { get; set; } = AiProvider.OpenRouter;
 

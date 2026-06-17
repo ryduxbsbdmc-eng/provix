@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo [1/2] Building release...
-call build.cmd fast
+call build.cmd single
 if errorlevel 1 exit /b 1
 
 if not exist "publish\FileExplorer.exe" (

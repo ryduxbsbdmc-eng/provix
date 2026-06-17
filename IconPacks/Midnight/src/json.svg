@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    
+  <filter id="ds" x="-30%" y="-30%" width="160%" height="170%">
+    <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#0b1830" flood-opacity="0.35"/>
+  </filter>
+    
+  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.65"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
+  </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e7edf7"/></linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffd35c"/><stop offset="100%" stop-color="#e0a400"/></linearGradient>
+  </defs>
+  <g filter="url(#ds)">
+    <path d="M82 46 H156 L188 78 V198 a14 14 0 0 1 -14 14 H82 a14 14 0 0 1 -14 -14 V60 a14 14 0 0 1 14 -14 Z" fill="url(#paper)"/>
+    <!-- folded corner -->
+    <path d="M156 46 L188 78 H160 a4 4 0 0 1 -4 -4 Z" fill="#c4cedf"/>
+    
+    <rect x="68" y="148" width="120" height="44" fill="url(#acc)"/>
+    <rect x="68" y="148" width="120" height="20" fill="url(#gloss)"/>
+    <text x="128" y="172" text-anchor="middle" dominant-baseline="central"
+          font-family="Segoe UI, Arial, sans-serif" font-weight="800"
+          font-size="21" letter-spacing="0.5" fill="#5a4202">JSON</text>
+    <!-- top sheen -->
+    <path d="M68 96 V60 a14 14 0 0 1 14 -14 H156 L188 78 V96 Q128 118 68 96 Z" fill="url(#gloss)"/>
+    <!-- rim highlight -->
+    <path d="M82 46 H156 L188 78 V198 a14 14 0 0 1 -14 14 H82 a14 14 0 0 1 -14 -14 V60 a14 14 0 0 1 14 -14 Z" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.5"/>
+  </g>
+</svg>

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    
+  <filter id="ds" x="-30%" y="-30%" width="160%" height="170%">
+    <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#0b1830" flood-opacity="0.35"/>
+  </filter>
+    
+  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.65"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
+  </linearGradient>
+    <linearGradient id="fbk" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3f7fd8"/><stop offset="100%" stop-color="#2f63c4"/></linearGradient>
+    <linearGradient id="ffr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#79c2ff"/><stop offset="55%" stop-color="#3f93f0"/><stop offset="100%" stop-color="#2c74dc"/></linearGradient>
+  </defs>
+  <g filter="url(#ds)">
+    <!-- back panel + tab -->
+    <path d="M46 84 a16 16 0 0 1 16 -16 H100 a8 8 0 0 1 6 2 l14 14 H194 a16 16 0 0 1 16 16 V176 a16 16 0 0 1 -16 16 H62 a16 16 0 0 1 -16 -16 Z" fill="url(#fbk)"/>
+    <!-- front pocket -->
+    <rect x="42" y="100" width="172" height="98" rx="17" fill="url(#ffr)"/>
+    <!-- glossy sheen on front -->
+    <path d="M42 132 V117 a17 17 0 0 1 17 -17 H197 a17 17 0 0 1 17 17 V132 Q128 160 42 132 Z" fill="url(#gloss)"/>
+    <!-- thin rim highlight -->
+    <rect x="43.5" y="101.5" width="169" height="95" rx="15.5" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1.5"/>
+  </g>
+</svg>

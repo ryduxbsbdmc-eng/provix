@@ -1,16 +1,23 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace FileExplorer.Controls;
 
 public partial class DirectoryPaneHost : UserControl
 {
+    /// <summary>
+    /// Minimum pane width. Panes stretch equally to fill the whole viewport; once equal widths
+    /// would drop below this value the host switches to horizontal scrolling instead.
+    /// </summary>
     private const double MinPaneColumnWidth = 300;
+
     private const double SplitterColumnWidth = 2;
 
     private readonly Dictionary<DirectoryPaneControl, FrameworkElement> _paneWrappers = new();
     private int _paneColumnCount;
+    private bool _deferredRefreshQueued;
 
     public DirectoryPaneHost()
     {
@@ -39,6 +46,35 @@ public partial class DirectoryPaneHost : UserControl
     }
 
     public FrameworkElement AddPaneColumn(DirectoryPaneControl pane, bool addSplitterAfter, bool prepareEntrance = false)
+    {
+        var wrapper = AttachPaneWrapper(pane, prepareEntrance);
+
+        if (addSplitterAfter)
+            AppendSplitterColumn();
+
+        RefreshLayout();
+        QueueDeferredRefresh();
+        return wrapper;
+    }
+
+    /// <summary>
+    /// Adds a single pane to the right of the existing panes without rebuilding the whole host.
+    /// Much cheaper than <see cref="ClearPanes"/> + re-adding every pane, so the "+" button feels instant.
+    /// </summary>
+    public FrameworkElement AppendPaneColumn(DirectoryPaneControl pane, bool prepareEntrance = false)
+    {
+        // The previous last pane has no trailing splitter, so insert one before the new pane.
+        if (_paneColumnCount > 0)
+            AppendSplitterColumn();
+
+        var wrapper = AttachPaneWrapper(pane, prepareEntrance);
+
+        RefreshLayout();
+        QueueDeferredRefresh();
+        return wrapper;
+    }
+
+    private FrameworkElement AttachPaneWrapper(DirectoryPaneControl pane, bool prepareEntrance)
     {
         DetachFromParent(pane);
 
@@ -72,12 +108,12 @@ public partial class DirectoryPaneHost : UserControl
         PaneHostGrid.Children.Add(wrapper);
         _paneColumnCount++;
 
-        if (!addSplitterAfter)
-        {
-            RefreshLayout();
-            return wrapper;
-        }
+        return wrapper;
+    }
 
+    private void AppendSplitterColumn()
+    {
+        var columnIndex = PaneHostGrid.ColumnDefinitions.Count;
         PaneHostGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(SplitterColumnWidth) });
 
         var splitter = new GridSplitter
@@ -85,12 +121,9 @@ public partial class DirectoryPaneHost : UserControl
             Style = (Style)Application.Current.FindResource("PaneSplitterStyle"),
             ResizeDirection = GridResizeDirection.Columns
         };
-        Grid.SetColumn(splitter, columnIndex + 1);
+        Grid.SetColumn(splitter, columnIndex);
         Grid.SetRow(splitter, 0);
         PaneHostGrid.Children.Add(splitter);
-
-        RefreshLayout();
-        return wrapper;
     }
 
     private void DirectoryPaneHost_SizeChanged(object sender, SizeChangedEventArgs e) =>
@@ -99,12 +132,32 @@ public partial class DirectoryPaneHost : UserControl
     private void PaneScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e) =>
         RefreshLayout();
 
+    /// <summary>
+    /// Runs the layout now and schedules one more pass once the visual tree has settled. Adding or
+    /// removing a pane does not change the host size, so no size-changed event fires to correct a
+    /// layout that was computed against a stale viewport width; this guarantees the final fit.
+    /// </summary>
+    private void QueueDeferredRefresh()
+    {
+        if (_deferredRefreshQueued)
+            return;
+
+        _deferredRefreshQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            _deferredRefreshQueued = false;
+            RefreshLayout();
+        }));
+    }
+
     private void RefreshLayout()
     {
         if (_paneColumnCount == 0)
             return;
 
         var available = PaneScrollViewer.ViewportWidth;
+        if (available <= 0 || double.IsNaN(available))
+            available = PaneScrollViewer.ActualWidth;
         if (available <= 0 || double.IsNaN(available))
             available = ActualWidth;
 
@@ -114,17 +167,21 @@ public partial class DirectoryPaneHost : UserControl
         var splitterCount = Math.Max(0, _paneColumnCount - 1);
         var totalMin = _paneColumnCount * MinPaneColumnWidth + splitterCount * SplitterColumnWidth;
 
-        if (totalMin > available)
+        if (totalMin <= available)
         {
-            PaneHostGrid.Width = totalMin;
-            PaneHostGrid.HorizontalAlignment = HorizontalAlignment.Left;
-            ApplyPaneColumnWidths(new GridLength(MinPaneColumnWidth, GridUnitType.Pixel));
+            // Panes fit at or above the minimum width: stretch them equally to fill the entire
+            // viewport edge-to-edge, with no leftover gap on the right and no clipping.
+            PaneHostGrid.Width = available;
+            PaneHostGrid.HorizontalAlignment = HorizontalAlignment.Stretch;
+            ApplyPaneColumnWidths(new GridLength(1, GridUnitType.Star));
             return;
         }
 
-        PaneHostGrid.Width = available;
-        PaneHostGrid.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ApplyPaneColumnWidths(new GridLength(1, GridUnitType.Star));
+        // Equal widths would drop below the minimum, so pin each pane to MinPaneColumnWidth and let
+        // the horizontal scrollbar reach the last pane fully (grid width matches content exactly).
+        PaneHostGrid.Width = totalMin;
+        PaneHostGrid.HorizontalAlignment = HorizontalAlignment.Left;
+        ApplyPaneColumnWidths(new GridLength(MinPaneColumnWidth, GridUnitType.Pixel));
     }
 
     private void ApplyPaneColumnWidths(GridLength paneWidth)

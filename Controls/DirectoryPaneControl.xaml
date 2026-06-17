@@ -182,6 +182,7 @@
                           ItemContainerStyle="{DynamicResource ExplorerListViewItemStyle}"
                           VirtualizingPanel.IsVirtualizing="True"
                           VirtualizingPanel.VirtualizationMode="Recycling"
+                          VirtualizingPanel.ScrollUnit="Item"
                           MouseDoubleClick="FileList_MouseDoubleClick"
                           ContextMenuOpening="FileList_ContextMenuOpening"
                           PreviewMouseRightButtonDown="FileList_PreviewMouseRightButtonDown"

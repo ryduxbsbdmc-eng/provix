@@ -284,6 +284,16 @@ public sealed class SettingsManager
         SettingChanged?.Invoke(this, nameof(AppSettings.JellyDragEnabled));
     }
 
+    public void UpdateEnableCloseAnimations(bool enabled)
+    {
+        if (Current.EnableCloseAnimations == enabled)
+            return;
+
+        Current.EnableCloseAnimations = enabled;
+        Save();
+        SettingChanged?.Invoke(this, nameof(AppSettings.EnableCloseAnimations));
+    }
+
     public void UpdateJellyIntensity(double intensity)
     {
         intensity = Math.Clamp(intensity, MinJellyIntensity, MaxJellyIntensity);

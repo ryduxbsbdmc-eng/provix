@@ -6,5 +6,7 @@ public sealed class GitCommit
     public required string Date { get; init; }
     public required string Message { get; init; }
 
-    public string Summary => $"{Hash}  ·  {Date}  ·  {Message}";
+    public string HeaderLine => $"{Hash} · {Date}";
+
+    public string Summary => $"{HeaderLine} · {Message}";
 }

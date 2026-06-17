@@ -9,6 +9,7 @@
 #define MyAppExeName "FileExplorer.exe"
 #define MyAppSourceDir "..\publish"
 #define MyAppOutputDir "..\installer"
+#define MyAppIconFile "..\icon\icon.ico"
 #define MyAppUrl "https://github.com/ryduxbsbdmc-eng/provix"
 
 [Setup]
@@ -26,7 +27,7 @@ DisableProgramGroupPage=yes
 UninstallDisplayName={#MyAppName}
 OutputDir={#MyAppOutputDir}
 OutputBaseFilename=Provix-Setup-{#MyAppVersion}
-SetupIconFile=
+SetupIconFile={#MyAppIconFile}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -59,10 +60,11 @@ Source: "{#MyAppSourceDir}\Themes\Packs\*"; DestDir: "{app}\Themes\Packs"; Flags
 Source: "{#MyAppSourceDir}\IconPacks\*"; DestDir: "{app}\IconPacks"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE.ru.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyAppIconFile}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

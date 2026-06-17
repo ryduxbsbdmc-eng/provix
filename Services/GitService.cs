@@ -324,14 +324,19 @@ public static partial class GitService
         {
             var result = await RunGitAsync(
                 repositoryRoot,
-                $"log --pretty=format:\"%h|%ar|%s\" -n {limit}").ConfigureAwait(false);
+                $"log --pretty=format:%h%x1f%ar%x1f%s -n {limit}").ConfigureAwait(false);
 
             if (result.ExitCode != 0)
+            {
+                var stderr = result.StandardError + result.StandardOutput;
+                if (stderr.Contains("does not have any commits yet", StringComparison.OrdinalIgnoreCase) ||
+                    stderr.Contains("bad default revision", StringComparison.OrdinalIgnoreCase))
+                    return GitCommitHistoryResult.Succeeded([]);
+
                 return GitCommitHistoryResult.Failed(FormatGitError("git log failed.", result));
+            }
 
             var commits = ParseCommitLog(result.StandardOutput);
-            if (commits.Count == 0)
-                return GitCommitHistoryResult.Failed("No commits found in this repository.");
 
             return GitCommitHistoryResult.Succeeded(commits);
         }
@@ -342,6 +347,22 @@ public static partial class GitService
         catch (Exception ex)
         {
             return GitCommitHistoryResult.Failed(ex.Message);
+        }
+    }
+
+    public static async Task<string> GetHeadShortHashAsync(string directory)
+    {
+        if (!TryResolveRepositoryRoot(directory, out var repositoryRoot, out _))
+            return string.Empty;
+
+        try
+        {
+            var result = await RunGitAsync(repositoryRoot, "rev-parse --short HEAD").ConfigureAwait(false);
+            return result.ExitCode == 0 ? result.StandardOutput.Trim() : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 
@@ -414,11 +435,12 @@ public static partial class GitService
 
     private static List<GitCommit> ParseCommitLog(string output)
     {
+        const char fieldSeparator = '\x1f';
         var commits = new List<GitCommit>();
 
         foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
-            var parts = line.Split('|', 3);
+            var parts = line.Split(fieldSeparator, 3);
             if (parts.Length < 3)
                 continue;
 

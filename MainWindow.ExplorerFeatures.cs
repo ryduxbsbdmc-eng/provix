@@ -355,7 +355,7 @@ public partial class MainWindow
         if (_panes.Count < 2)
         {
             var newPane = CreatePane();
-            RebuildPaneHost(entrancePane: newPane.Control);
+            AppendPaneToHost(newPane.Control);
             NavigateToDirectory(newPane, sourcePane.CurrentPath ?? string.Empty, syncTree: false, recordHistory: false);
         }
 

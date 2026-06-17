@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    
+  <filter id="ds" x="-30%" y="-30%" width="160%" height="170%">
+    <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#0b1830" flood-opacity="0.35"/>
+  </filter>
+    
+  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.65"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
+  </linearGradient>
+    <linearGradient id="dbody" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7d8ba3"/><stop offset="50%" stop-color="#566174"/><stop offset="100%" stop-color="#39424f"/></linearGradient>
+    <linearGradient id="dled" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8be0ff"/><stop offset="100%" stop-color="#2f8fd6"/></linearGradient>
+  </defs>
+  <g filter="url(#ds)">
+    <rect x="46" y="82" width="164" height="92" rx="20" fill="url(#dbody)"/>
+    <!-- top sheen -->
+    <path d="M46 116 V102 a20 20 0 0 1 20 -20 H190 a20 20 0 0 1 20 20 V116 Q128 142 46 116 Z" fill="url(#gloss)"/>
+    <!-- engraved slot line -->
+    <rect x="70" y="150" width="116" height="6" rx="3" fill="#222a33" fill-opacity="0.55"/>
+    <!-- activity LED -->
+    <circle cx="180" cy="124" r="9" fill="url(#dled)"/>
+    <circle cx="177" cy="121" r="3" fill="#ffffff" fill-opacity="0.8"/>
+    <!-- rim highlight -->
+    <rect x="47.5" y="83.5" width="161" height="89" rx="18.5" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1.5"/>
+  </g>
+</svg>

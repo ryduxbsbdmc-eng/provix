@@ -7,6 +7,7 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         x:Name="RootWindow"
         Title="provix"
+        Icon="pack://application:,,,/icon/icon.ico"
         Width="1424"
         Height="964"
         MinWidth="720"
@@ -1334,44 +1335,7 @@
                                        FontWeight="SemiBold"
                                        Margin="0,0,0,12" />
                             <ListView x:Name="GitCommitFilesList"
-                                      Height="140"
-                                      Margin="0,0,0,12"
-                                      Background="{DynamicResource PanelBackgroundBrush}"
-                                      BorderBrush="{DynamicResource BorderBrushDark}"
-                                      BorderThickness="1"
-                                      Visibility="Collapsed"
-                                      ItemContainerStyle="{DynamicResource ExplorerListViewItemStyle}">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Ellipse Width="6" Height="6" Margin="4,0,10,0" VerticalAlignment="Center">
-                                                <Ellipse.Style>
-                                                    <Style TargetType="Ellipse">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Modified">
-                                                                <Setter Property="Fill" Value="{DynamicResource GitModifiedBrush}" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Added">
-                                                                <Setter Property="Fill" Value="{DynamicResource GitAddedBrush}" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Untracked">
-                                                                <Setter Property="Fill" Value="{DynamicResource GitUntrackedBrush}" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Deleted">
-                                                                <Setter Property="Fill" Value="{DynamicResource GitDeletedBrush}" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="UpdatedButUnmerged">
-                                                                <Setter Property="Fill" Value="{DynamicResource GitConflictBrush}" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Ellipse.Style>
-                                            </Ellipse>
-                                            <TextBlock Text="{Binding FilePath}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
+                                      Visibility="Collapsed" />
                             <TextBox x:Name="NamePromptTextBox"
                                      Style="{DynamicResource AddressBarTextBoxStyle}"
                                      KeyDown="NamePromptTextBox_KeyDown" />
@@ -1809,6 +1773,19 @@
                                       Unchecked="SettingsUseBuiltInMediaViewerCheckBox_Changed" />
                             <TextBlock x:Name="SettingsUseBuiltInMediaViewerHint"
                                        Text="{loc:Loc UI_UseBuiltInMediaViewerHint}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,14" />
+
+                            <CheckBox x:Name="SettingsEnableCloseAnimationsCheckBox"
+                                      Content="{loc:Loc UI_EnableCloseAnimations}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      Margin="0,0,0,6"
+                                      Checked="SettingsEnableCloseAnimationsCheckBox_Changed"
+                                      Unchecked="SettingsEnableCloseAnimationsCheckBox_Changed" />
+                            <TextBlock x:Name="SettingsEnableCloseAnimationsHint"
+                                       Text="{loc:Loc UI_EnableCloseAnimationsHint}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="10"
                                        TextWrapping="Wrap"
@@ -2518,6 +2495,7 @@
                 <Border x:Name="CommitHistoryOverlay"
                         Grid.Row="0"
                         Grid.ColumnSpan="3"
+                        Panel.ZIndex="420"
                         Visibility="Collapsed"
                         Background="Transparent"
                         IsHitTestVisible="True">
@@ -2538,7 +2516,6 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
-                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
@@ -2563,18 +2540,17 @@
                                          Background="Transparent"
                                          BorderThickness="0"
                                          Foreground="{DynamicResource TextPrimaryBrush}"
+                                         ScrollViewer.CanContentScroll="False"
+                                         VirtualizingPanel.IsVirtualizing="False"
                                          ItemContainerStyle="{DynamicResource CommitHistoryListBoxItemStyle}"
                                          SelectionChanged="CommitHistoryListBox_SelectionChanged">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel>
-                                                <TextBlock FontSize="12">
-                                                    <Run Text="{Binding Hash}"
-                                                         FontWeight="SemiBold"
-                                                         FontFamily="Consolas" />
-                                                    <Run Text="  Р’В·  " />
-                                                    <Run Text="{Binding Date}" />
-                                                </TextBlock>
+                                                <TextBlock Text="{Binding HeaderLine}"
+                                                           FontSize="12"
+                                                           FontFamily="Consolas"
+                                                           TextWrapping="Wrap" />
                                                 <TextBlock Text="{Binding Message}"
                                                            FontSize="12"
                                                            Margin="0,4,0,0"
@@ -2586,25 +2562,15 @@
                                 </ListBox>
                             </Border>
 
-                            <TextBlock x:Name="CommitHistoryWarningText"
-                                       Grid.Row="2"
-                                       Text="{loc:Loc UI_GitRestoreWarning}"
-                                       TextWrapping="Wrap"
-                                       Foreground="#FFFFB86B"
-                                       FontSize="12"
-                                       LineHeight="18"
-                                       Margin="0,0,0,10"
-                                       Visibility="Collapsed" />
-
                             <TextBlock x:Name="CommitHistoryErrorText"
-                                       Grid.Row="3"
+                                       Grid.Row="2"
                                        Foreground="{DynamicResource ErrorTextBrush}"
                                        FontSize="11"
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed"
                                        Margin="0,0,0,8" />
 
-                            <Grid Grid.Row="4">
+                            <Grid Grid.Row="3">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="8" />
@@ -2636,16 +2602,10 @@
                                 </Button>
                                 <Button Grid.Column="6"
                                         x:Name="CommitHistoryRestoreButton"
-                                        Style="{StaticResource DialogActionButtonStyle}"
+                                        Style="{StaticResource DialogDangerButtonStyle}"
                                         Content="{loc:Loc UI_GitRestoreSelected}"
                                         IsEnabled="False"
                                         Click="CommitHistoryRestoreButton_Click" />
-                                <Button Grid.Column="6"
-                                        x:Name="CommitHistoryConfirmRestoreButton"
-                                        Style="{StaticResource DialogDangerButtonStyle}"
-                                        Content="{loc:Loc UI_GitConfirmRestore}"
-                                        Visibility="Collapsed"
-                                        Click="CommitHistoryConfirmRestoreButton_Click" />
                             </Grid>
                             </Grid>
                         </Border>
@@ -2855,6 +2815,58 @@
                                                         Visibility="Collapsed"
                                                         CloseRequested="PowerShellTerminal_CloseRequested"
                                                         WorkingDirectoryChanged="PowerShellTerminal_WorkingDirectoryChanged" />
+
+                <!-- Git error overlay -->
+                <Border x:Name="GitErrorOverlay"
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        Grid.ColumnSpan="3"
+                        Panel.ZIndex="430"
+                        Visibility="Collapsed"
+                        Background="Transparent"
+                        IsHitTestVisible="True">
+                    <Border x:Name="GitErrorPanel"
+                            Width="420"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Background="{DynamicResource GlassBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrushDark}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="20"
+                            RenderTransformOrigin="0.5,0.5"
+                            SnapsToDevicePixels="True">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="&#xE783;"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="18"
+                                           Foreground="{DynamicResource ErrorTextBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0" />
+                                <TextBlock x:Name="GitErrorTitleText"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock x:Name="GitErrorMessageText"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       LineHeight="20"
+                                       Margin="0,0,0,16"
+                                       MaxHeight="280"
+                                       FontFamily="Consolas" />
+                            <Button x:Name="GitErrorCloseButton"
+                                    Style="{StaticResource DialogActionButtonStyle}"
+                                    Content="{loc:Loc UI_Close}"
+                                    HorizontalAlignment="Right"
+                                    Click="GitErrorCloseButton_Click" />
+                        </StackPanel>
+                    </Border>
+                </Border>
+
             </Grid>
 
             <!-- Status bar -->

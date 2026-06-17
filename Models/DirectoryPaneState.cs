@@ -43,6 +43,10 @@ public sealed class DirectoryPaneState
 
     public DateTime LastListingShownUtc { get; set; }
 
+    public IReadOnlyList<FileSystemEntry>? CurrentContents { get; set; }
+
+    public bool NeedsMetadataRefresh { get; set; }
+
     public void EnsureDefaultTab()
     {
         if (Tabs.Count > 0)

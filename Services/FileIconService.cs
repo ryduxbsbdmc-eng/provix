@@ -229,6 +229,13 @@ public sealed class FileIconService
 
     private static ImageSource CreateFallbackIcon(System.Windows.Media.Brush fill)
     {
+        // DrawingVisual/RenderTargetBitmap have UI-thread affinity. Directory listings build icons
+        // on a background thread, so marshal the rendering onto the Dispatcher to avoid a
+        // cross-thread access exception. The frozen result is safe to use from any thread.
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+            return dispatcher.Invoke(() => CreateFallbackIcon(fill));
+
         var visual = new DrawingVisual();
         using (var context = visual.RenderOpen())
             context.DrawRoundedRectangle(fill, null, new Rect(0, 0, IconSize, IconSize), 2, 2);

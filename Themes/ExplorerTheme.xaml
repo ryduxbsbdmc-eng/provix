@@ -409,6 +409,7 @@
     <Style x:Key="ExplorerScrollBarStyle" TargetType="ScrollBar">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Width" Value="10" />
+        <Setter Property="helpers:ScrollBarSeekHelper.IsEnabled" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">

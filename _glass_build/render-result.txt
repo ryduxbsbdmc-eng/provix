@@ -1,0 +1,1 @@
+RENDERED 18: folder, drive, file, txt, md, pdf, zip, 7z, rar, cs, js, ts, json, html, css, png, jpg, exe
