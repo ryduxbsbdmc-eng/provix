@@ -180,17 +180,23 @@ pip-delete-this-directory.txt
 .ruff_cache/
 
 # -----------------------------------------------------------------------------
-# Android (provix-android/)
+# Android app (not part of the Provix WPF project)
 # -----------------------------------------------------------------------------
-provix-android/.gradle/
-provix-android/**/build/
-provix-android/local.properties
-provix-android/.idea/
-provix-android/*.iml
-provix-android/captures/
-provix-android/.cxx/
-provix-android/**/*.apk
-provix-android/**/*.aab
+provix-android/
+java-ui/
+
+# -----------------------------------------------------------------------------
+# Website / design (not part of the Provix WPF project)
+# -----------------------------------------------------------------------------
+website/
+
+# -----------------------------------------------------------------------------
+# Local build tooling, helpers & prebuilt binaries (not project source)
+# -----------------------------------------------------------------------------
+_glass_build/
+release-assets/
+tools/
+wingetcreate/
 
 # -----------------------------------------------------------------------------
 # Misc local tooling
