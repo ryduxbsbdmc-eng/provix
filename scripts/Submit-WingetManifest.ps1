@@ -49,32 +49,33 @@ $existingPr = gh pr list `
     --jq '.[0].url'
 if ($existingPr) {
     Write-Host "Open PR already exists: $existingPr"
-    return
-}
-
-Write-Host "Reading fork master commit..."
-$baseSha = gh api "$forkApi/git/ref/heads/master" --jq .object.sha
-Write-Host "Fork base commit: $baseSha"
-
-Write-Host "Creating branch $branch on fork..."
-$branchRef = "heads/$branch"
-$null = gh api "$forkApi/git/ref/$branchRef" 2>$null
-if ($LASTEXITCODE -eq 0) {
-    $refPayload = @{ sha = $baseSha; force = $true } | ConvertTo-Json -Compress
-    $refPath = Join-Path $env:TEMP "winget-ref-$([Guid]::NewGuid().ToString('N')).json"
-    try {
-        [System.IO.File]::WriteAllText($refPath, $refPayload, [System.Text.UTF8Encoding]::new($false))
-        gh api "$forkApi/git/refs/$branchRef" -X PATCH --input $refPath | Out-Null
-    }
-    finally {
-        if (Test-Path $refPath) { Remove-Item -Force $refPath }
-    }
+    Write-Host "Updating manifest files on branch $branch..."
 }
 else {
-    gh api "$forkApi/git/refs" -f ref="refs/heads/$branch" -f sha=$baseSha | Out-Null
-}
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to create branch $branch on fork."
+    Write-Host "Reading fork master commit..."
+    $baseSha = gh api "$forkApi/git/ref/heads/master" --jq .object.sha
+    Write-Host "Fork base commit: $baseSha"
+
+    Write-Host "Creating branch $branch on fork..."
+    $branchRef = "heads/$branch"
+    $null = gh api "$forkApi/git/ref/$branchRef" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $refPayload = @{ sha = $baseSha; force = $true } | ConvertTo-Json -Compress
+        $refPath = Join-Path $env:TEMP "winget-ref-$([Guid]::NewGuid().ToString('N')).json"
+        try {
+            [System.IO.File]::WriteAllText($refPath, $refPayload, [System.Text.UTF8Encoding]::new($false))
+            gh api "$forkApi/git/refs/$branchRef" -X PATCH --input $refPath | Out-Null
+        }
+        finally {
+            if (Test-Path $refPath) { Remove-Item -Force $refPath }
+        }
+    }
+    else {
+        gh api "$forkApi/git/refs" -f ref="refs/heads/$branch" -f sha=$baseSha | Out-Null
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create branch $branch on fork."
+    }
 }
 
 $commitMessage = "Add Provix.Provix version $PackageVersion"
@@ -87,11 +88,18 @@ Get-ChildItem -Path $ManifestDir -Filter "*.yaml" | ForEach-Object {
         message = $commitMessage
         content = $encoded
         branch  = $branch
-    } | ConvertTo-Json -Compress
+    }
+
+    $existingFile = gh api "$forkApi/contents/$relativePath?ref=$branch" --jq .sha 2>$null
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existingFile)) {
+        $payload.sha = $existingFile
+    }
+
+    $payloadJson = $payload | ConvertTo-Json -Compress
 
     $payloadPath = Join-Path $env:TEMP "winget-content-$([Guid]::NewGuid().ToString('N')).json"
     try {
-        [System.IO.File]::WriteAllText($payloadPath, $payload, [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($payloadPath, $payloadJson, [System.Text.UTF8Encoding]::new($false))
         gh api "$forkApi/contents/$relativePath" -X PUT --input $payloadPath | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to upload $relativePath."
@@ -104,6 +112,11 @@ Get-ChildItem -Path $ManifestDir -Filter "*.yaml" | ForEach-Object {
 }
 
 Write-Host "Creating pull request..."
+if ($existingPr) {
+    Write-Host "WinGet PR updated: $existingPr"
+    return
+}
+
 $prUrl = gh pr create `
     --repo $UpstreamRepo `
     --head "${ForkOwner}:${branch}" `

@@ -20,11 +20,17 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          $apiHeaders = @{
+            "User-Agent" = "provix-winget"
+            Authorization = "Bearer $env:GH_TOKEN"
+          }
+
           if ($env:RELEASE_TAG) {
             $releaseTag = $env:RELEASE_TAG
             $version = $releaseTag -replace '^v', ''
-            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:REPOSITORY/releases/tags/$releaseTag" -Headers @{ "User-Agent" = "provix-winget" }
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:REPOSITORY/releases/tags/$releaseTag" -Headers $apiHeaders
             $asset = $release.assets | Where-Object { $_.name -like 'Provix-Setup-*.exe' } | Select-Object -First 1
             if (-not $asset) { throw "Provix-Setup-*.exe asset not found in release $releaseTag" }
 
