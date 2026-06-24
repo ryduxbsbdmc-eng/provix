@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     {
         NewFolder,
         NewTextFile,
+        Rename,
         GitCommit,
         GitAmend,
         GitBranch
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
     private readonly ArchiveService _archiveService = new();
     private readonly EncryptedZipService _encryptedZipService = new();
     private readonly FileMoveService _fileMoveService = new();
+    private readonly FileRenameService _fileRenameService = new();
     private readonly AiService _aiService = new();
     private readonly AiCommandExecutor _aiCommandExecutor = new();
     private const double JellySafeInset = 72;
@@ -56,7 +58,9 @@ public partial class MainWindow : Window
 
     private NamePromptMode _namePromptMode;
     private DirectoryPaneState? _namePromptTargetPane;
+    private FileSystemEntry? _namePromptRenameEntry;
     private string? _namePromptGitTargetDirectory;
+    private string? _namePromptCreateTargetDirectory;
     private bool _isGitCommitInProgress;
     private bool _isGitHistoryInProgress;
     private DirectoryPaneState? _commitHistoryTargetPane;
@@ -325,6 +329,7 @@ public partial class MainWindow : Window
             fileContextMenu.Opened += (_, _) => UpdatePaneFileListContextMenuState(pane);
         control.NewFolderRequested += (_, _) => ShowNamePrompt(NamePromptMode.NewFolder, pane);
         control.NewTextFileRequested += (_, _) => ShowNamePrompt(NamePromptMode.NewTextFile, pane);
+        control.RenameRequested += (_, _) => BeginRenameSelectedItem(pane);
         control.DeleteRequested += (_, _) => DeleteSelectedItems(pane);
         control.ExtractArchiveRequested += async (_, _) => await ExtractSelectedArchivesFromPaneAsync(pane);
         control.EncryptFolderRequested += (_, _) => BeginEncryptFolderWorkflow(pane);
@@ -1085,6 +1090,15 @@ public partial class MainWindow : Window
         pane.Control.FileListView.ItemsSource = contents;
         pane.CurrentContents = contents;
 
+        if (!string.IsNullOrEmpty(pane.PendingSelectionPath))
+        {
+            var pathToSelect = pane.PendingSelectionPath;
+            pane.PendingSelectionPath = null;
+            await Dispatcher.InvokeAsync(
+                () => SelectFileEntryByPath(pane, pathToSelect),
+                DispatcherPriority.Loaded);
+        }
+
         if (pane == _activePane)
         {
             StatusText.Text = $"{contents.Count} item(s)";
@@ -1688,6 +1702,7 @@ public partial class MainWindow : Window
             menuItem.IsEnabled = tag switch
             {
                 "Delete" => hasSelection,
+                "Rename" => hasSelection && selectedEntries.Count == 1,
                 "ExtractArchive" => isArchiveSelection && hasResolvedPath && !_isExtracting,
                 "EncryptFolder" => isSingleFolderSelection && hasResolvedPath && !_isExtracting && !_isEncrypting,
                 "ShowWindowsMenu" => hasSelection || hasResolvedPath,
@@ -2188,6 +2203,68 @@ public partial class MainWindow : Window
             return;
 
         ShowDeleteConfirmation(pane, selectedEntries);
+    }
+
+    private void BeginRenameSelectedItem(DirectoryPaneState pane)
+    {
+        if (NamePromptOverlay.Visibility == Visibility.Visible ||
+            _isEditorOpen ||
+            _isArchiveViewerOpen ||
+            _isMediaViewerOpen)
+        {
+            return;
+        }
+
+        var selectedEntries = GetSelectedFileEntries(pane.Control.FileListView);
+        if (selectedEntries.Count != 1)
+            return;
+
+        ShowRenamePrompt(pane, selectedEntries[0]);
+    }
+
+    private void ShowRenamePrompt(DirectoryPaneState pane, FileSystemEntry entry)
+    {
+        if (string.IsNullOrEmpty(pane.CurrentPath))
+            return;
+
+        _namePromptTargetPane = pane;
+        _namePromptMode = NamePromptMode.Rename;
+        _namePromptRenameEntry = entry;
+        _namePromptGitTargetDirectory = null;
+
+        var loc = LocalizationManager.Instance;
+        NamePromptTitleText.Text = loc["UI_RenameTitle"];
+        NamePromptTextBox.Text = entry.Name;
+        NamePromptCreateButton.Content = loc["UI_RenameConfirm"];
+        GitCommitFilesList.Visibility = Visibility.Collapsed;
+        GitCommitFilesList.ItemsSource = null;
+
+        HideNamePromptError();
+        PushChromeDimOverlay();
+        NamePromptOverlay.Visibility = Visibility.Visible;
+        UiAnimationHelper.ShowOverlay(NamePromptPanel);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            NamePromptTextBox.Focus();
+            Keyboard.Focus(NamePromptTextBox);
+            NamePromptTextBox.SelectAll();
+        }, DispatcherPriority.Input);
+    }
+
+    private static void SelectFileEntryByPath(DirectoryPaneState pane, string fullPath)
+    {
+        if (pane.CurrentContents is null)
+            return;
+
+        var entry = pane.CurrentContents.FirstOrDefault(candidate =>
+            string.Equals(candidate.FullPath, fullPath, StringComparison.OrdinalIgnoreCase));
+
+        if (entry is null)
+            return;
+
+        pane.Control.FileListView.SelectedItem = entry;
+        pane.Control.FileListView.ScrollIntoView(entry);
     }
 
     private async Task ExtractSelectedArchivesFromPaneAsync(DirectoryPaneState pane)
@@ -2977,11 +3054,27 @@ public partial class MainWindow : Window
         DirectoryPaneState pane,
         string? gitTargetDirectory = null,
         int? changedFileCount = null,
-        List<GitFileStatus>? gitChanges = null)
+        List<GitFileStatus>? gitChanges = null,
+        string? createTargetDirectory = null)
     {
         var loc = LocalizationManager.Instance;
+        var createBasePath = string.IsNullOrWhiteSpace(createTargetDirectory)
+            ? pane.CurrentPath
+            : Path.GetFullPath(createTargetDirectory);
 
-        if (mode != NamePromptMode.GitCommit && mode != NamePromptMode.GitAmend && mode != NamePromptMode.GitBranch && string.IsNullOrEmpty(pane.CurrentPath))
+        if (mode is NamePromptMode.NewFolder or NamePromptMode.NewTextFile &&
+            string.IsNullOrEmpty(createBasePath))
+        {
+            StatusText.Text = "Select a folder before creating items.";
+            return;
+        }
+
+        if (mode != NamePromptMode.GitCommit &&
+            mode != NamePromptMode.GitAmend &&
+            mode != NamePromptMode.GitBranch &&
+            mode != NamePromptMode.Rename &&
+            string.IsNullOrEmpty(pane.CurrentPath) &&
+            string.IsNullOrEmpty(createBasePath))
         {
             StatusText.Text = "Select a folder before creating items.";
             return;
@@ -2997,6 +3090,11 @@ public partial class MainWindow : Window
         _namePromptTargetPane = pane;
         _namePromptMode = mode;
         _namePromptGitTargetDirectory = gitTargetDirectory is null ? null : Path.GetFullPath(gitTargetDirectory);
+        _namePromptRenameEntry = null;
+        _namePromptCreateTargetDirectory = mode is NamePromptMode.NewFolder or NamePromptMode.NewTextFile &&
+                                           !string.IsNullOrWhiteSpace(createTargetDirectory)
+            ? Path.GetFullPath(createTargetDirectory)
+            : null;
 
         GitCommitFilesList.Visibility = Visibility.Collapsed;
         GitCommitFilesList.ItemsSource = null;
@@ -3071,6 +3169,8 @@ public partial class MainWindow : Window
             GitCommitFilesList.Visibility = Visibility.Collapsed;
             _namePromptTargetPane = null;
             _namePromptGitTargetDirectory = null;
+            _namePromptRenameEntry = null;
+            _namePromptCreateTargetDirectory = null;
             HideNamePromptError();
             PopChromeDimOverlay();
         }
@@ -3171,13 +3271,26 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_namePromptTargetPane is null || string.IsNullOrEmpty(_namePromptTargetPane.CurrentPath))
+        if (_namePromptMode == NamePromptMode.Rename)
+        {
+            TryRenameFromNamePrompt();
+            return;
+        }
+
+        if (_namePromptTargetPane is null)
         {
             ShowNamePromptError("No folder is selected.");
             return;
         }
 
         var pane = _namePromptTargetPane;
+        var createBasePath = _namePromptCreateTargetDirectory ?? pane.CurrentPath;
+
+        if (string.IsNullOrEmpty(createBasePath))
+        {
+            ShowNamePromptError("No folder is selected.");
+            return;
+        }
 
         if (!TryNormalizeNewItemName(NamePromptTextBox.Text, _namePromptMode, out var itemName, out var error))
         {
@@ -3188,7 +3301,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var targetPath = Path.Combine(pane.CurrentPath, itemName);
+            var targetPath = Path.Combine(createBasePath, itemName);
 
             if (Directory.Exists(targetPath) || File.Exists(targetPath))
             {
@@ -3211,7 +3324,15 @@ public partial class MainWindow : Window
             }
 
             HideNamePrompt();
-            RefreshDirectoryListing(pane);
+            if (pane.CurrentPath is not null && PathsEqual(pane.CurrentPath, createBasePath))
+                RefreshDirectoryListing(pane);
+
+            if (_directoryTreeMenuTarget is not null &&
+                !string.IsNullOrEmpty(_directoryTreeMenuTarget.FullPath) &&
+                IsPathWithinRoot(createBasePath, _directoryTreeMenuTarget.FullPath))
+            {
+                ReloadTreeBranch(_directoryTreeMenuTarget);
+            }
         }
         catch (UnauthorizedAccessException)
         {
@@ -3231,6 +3352,48 @@ public partial class MainWindow : Window
         {
             ShowNamePromptError(ex.Message);
             StatusText.Text = ex.Message;
+        }
+    }
+
+    private void TryRenameFromNamePrompt()
+    {
+        var loc = LocalizationManager.Instance;
+        var pane = _namePromptTargetPane;
+        var entry = _namePromptRenameEntry;
+
+        if (pane is null || entry is null)
+        {
+            ShowNamePromptError(loc["UI_RenameNoSelection"]);
+            return;
+        }
+
+        var result = _fileRenameService.Rename(entry.FullPath, NamePromptTextBox.Text);
+        if (!result.Success)
+        {
+            ShowNamePromptError(result.ErrorMessage ?? loc["UI_RenameFailed"]);
+            StatusText.Text = result.ErrorMessage ?? loc["UI_RenameFailed"];
+            return;
+        }
+
+        HideNamePrompt();
+
+        if (result.NoChange)
+            return;
+
+        if (!string.IsNullOrEmpty(result.DestinationPath))
+            pane.PendingSelectionPath = result.DestinationPath;
+
+        RefreshDirectoryListing(pane);
+
+        var newName = Path.GetFileName(result.DestinationPath ?? entry.Name);
+        StatusText.Text = string.Format(loc["UI_RenameSuccess"], newName);
+
+        if (pane == _activePane &&
+            !string.IsNullOrEmpty(pane.CurrentPath) &&
+            result.DestinationPath is not null &&
+            IsPathWithinRoot(pane.CurrentPath, result.DestinationPath))
+        {
+            SyncTreeToPath(pane.CurrentPath);
         }
     }
 

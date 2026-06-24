@@ -47,6 +47,8 @@ public sealed class DirectoryPaneState
 
     public bool NeedsMetadataRefresh { get; set; }
 
+    public string? PendingSelectionPath { get; set; }
+
     public void EnsureDefaultTab()
     {
         if (Tabs.Count > 0)

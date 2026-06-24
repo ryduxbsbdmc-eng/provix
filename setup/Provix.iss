@@ -3,8 +3,8 @@
 ; WinGet: silent install /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
 
 #define MyAppName "Provix"
-#define MyAppVersion "1.4.6"
-#define MyAppVersionInfo "1.4.6.0"
+#define MyAppVersion "1.4.7"
+#define MyAppVersionInfo "1.4.7.0"
 #define MyAppPublisher "Provix"
 #define MyAppExeName "FileExplorer.exe"
 #define MyAppSourceDir "..\publish"

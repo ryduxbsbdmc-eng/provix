@@ -44,6 +44,7 @@ public partial class DirectoryPaneControl : UserControl
     public event SelectionChangedEventHandler? FileListSelectionChanged;
     public event RoutedEventHandler? NewFolderRequested;
     public event RoutedEventHandler? NewTextFileRequested;
+    public event RoutedEventHandler? RenameRequested;
     public event RoutedEventHandler? DeleteRequested;
     public event RoutedEventHandler? ExtractArchiveRequested;
     public event RoutedEventHandler? EncryptFolderRequested;
@@ -1187,8 +1188,20 @@ public partial class DirectoryPaneControl : UserControl
     private void NewTextFileMenuItem_Click(object sender, RoutedEventArgs e) =>
         NewTextFileRequested?.Invoke(sender, e);
 
+    private void RenameMenuItem_Click(object sender, RoutedEventArgs e) =>
+        RenameRequested?.Invoke(sender, e);
+
     private void DeleteMenuItem_Click(object sender, RoutedEventArgs e) =>
         DeleteRequested?.Invoke(sender, e);
+
+    private void FileList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F2)
+        {
+            e.Handled = true;
+            RenameRequested?.Invoke(sender, e);
+        }
+    }
 
     private void ExtractArchiveMenuItem_Click(object sender, RoutedEventArgs e) =>
         ExtractArchiveRequested?.Invoke(sender, e);

@@ -186,6 +186,7 @@
                           MouseDoubleClick="FileList_MouseDoubleClick"
                           ContextMenuOpening="FileList_ContextMenuOpening"
                           PreviewMouseRightButtonDown="FileList_PreviewMouseRightButtonDown"
+                          PreviewKeyDown="FileList_PreviewKeyDown"
                           PreviewMouseLeftButtonDown="FileList_PreviewMouseLeftButtonDown"
                           PreviewMouseMove="FileList_PreviewMouseMove"
                           PreviewMouseLeftButtonUp="FileList_PreviewMouseLeftButtonUp"
@@ -235,6 +236,10 @@
                                   Click="EncryptFolderMenuItem_Click" />
                         <Separator x:Name="EncryptFolderSeparator"
                                    Visibility="Collapsed" />
+                        <MenuItem x:Name="RenameMenuItem"
+                                  Header="{loc:Loc UI_Rename}"
+                                  Tag="Rename"
+                                  Click="RenameMenuItem_Click" />
                         <MenuItem x:Name="DeleteMenuItem"
                                   Header="{loc:Loc UI_Delete}"
                                   Tag="Delete"
