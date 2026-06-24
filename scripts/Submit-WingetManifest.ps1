@@ -90,7 +90,7 @@ Get-ChildItem -Path $ManifestDir -Filter "*.yaml" | ForEach-Object {
         branch  = $branch
     }
 
-    $existingFile = gh api "$forkApi/contents/$relativePath?ref=$branch" --jq .sha 2>$null
+    $existingFile = gh api "$forkApi/contents/$relativePath" -f "ref=$branch" --jq .sha 2>$null
     if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existingFile)) {
         $payload.sha = $existingFile
     }
